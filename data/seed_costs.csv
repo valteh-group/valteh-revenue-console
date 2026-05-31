@@ -1,13 +1,15 @@
-id,name,category,service_line,cost_type,monthly_amount,unit_cost,unit,currency,active
-1,Hetzner CX41 pilot server,Infrastructure,Shared,fixed,370,0,,MXN,true
-2,Claude document analysis,AI,SAREMI,variable,0,0.95,saremi.document_validation,MXN,true
-3,Local document preprocessing,AI,SAREMI,variable,0,0.05,saremi.document_validation,MXN,true
-4,ID validation workflow,Operations,SAREMI,variable,0,0.10,saremi.ine_validation,MXN,true
-5,Graphos local query compute,Compute,Graphos,variable,0,0.02,graphos.query,MXN,true
-6,Graphos case analysis compute,Compute,Graphos,variable,0,0.10,graphos.case_analysis,MXN,true
-7,Local blockchain audit anchor,Blockchain,Blockchain / BaaS,variable,0,0.01,blockchain.asiento_registration,MXN,true
-8,Local blockchain folio placeholder,Blockchain,Blockchain / BaaS,variable,0,0.02,blockchain.folio_mint,MXN,true
-9,AWS BaaS pilot infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,5100,0,,MXN,false
-10,AWS BaaS production infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,15300,0,,MXN,false
-11,Blockchain DevOps engineer benchmark,People,Blockchain / BaaS,fixed,45000,0,,MXN,false
-12,Administrative and accounting benchmark,Operations,Shared,fixed,8000,0,,MXN,false
+﻿id,name,category,service_line,cost_type,monthly_amount,one_time_amount,start_date,unit_cost,unit,currency,active
+1,Hetzner CX41 pilot server,Infrastructure,Shared,fixed,370,0,01/04/2026,0,,MXN,TRUE
+2,Microsoft 365 team subscription,Software,Shared,fixed,400,0,01/05/2026,0,,MXN,TRUE
+3,valteh.com domain purchase,Software,Shared,one_time,0,1000,15/05/2026,0,,MXN,TRUE
+4,Claude document analysis,AI,SAREMI,variable,0,0,,1,saremi.document_validation,MXN,TRUE
+5,Local document preprocessing,AI,SAREMI,variable,0,0,,0.05,saremi.document_validation,MXN,TRUE
+6,ID validation workflow,Operations,SAREMI,variable,0,0,,0.1,saremi.ine_validation,MXN,TRUE
+7,Graphos local query compute,Compute,Graphos,variable,0,0,,0.02,graphos.query,MXN,TRUE
+8,Graphos case analysis compute,Compute,Graphos,variable,0,0,,0.1,graphos.case_analysis,MXN,TRUE
+9,Local blockchain audit anchor,Blockchain,Blockchain / BaaS,variable,0,0,,0.01,blockchain.asiento_registration,MXN,TRUE
+10,Local blockchain folio placeholder,Blockchain,Blockchain / BaaS,variable,0,0,,0.02,blockchain.folio_mint,MXN,TRUE
+11,AWS BaaS pilot infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,5100,0,01/04/2026,0,,MXN,FALSE
+12,AWS BaaS production infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,15300,0,01/04/2026,0,,MXN,FALSE
+13,Blockchain DevOps engineer benchmark,People,Blockchain / BaaS,fixed,45000,0,01/04/2026,0,,MXN,FALSE
+14,Administrative and accounting benchmark,Operations,Shared,fixed,8000,0,01/04/2026,0,,MXN,FALSE

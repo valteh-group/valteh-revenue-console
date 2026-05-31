@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal
 
 import pandas as pd
@@ -20,7 +19,11 @@ from app.domain.models import (
     Service,
     UsageEvent,
 )
-from app.domain.revenue_engine import calculate_client_revenue
+from app.domain.revenue_engine import (
+    calculate_client_revenue,
+    calculate_subscription_revenue,
+    calculate_usage_revenue,
+)
 from app.domain.unit_economics import calculate_gross_margin, calculate_gross_margin_percentage
 
 
@@ -35,7 +38,8 @@ class SeedRepository:
         self.data_path = settings.seed_data_dir if self.data_dir is None else BASE_DIR / self.data_dir
 
     def clients(self) -> list[Client]:
-        df = pd.read_csv(self.data_path / "seed_clients.csv", parse_dates=["start_date"])
+        df = pd.read_csv(self.data_path / "seed_clients.csv")
+        df["start_date"] = _parse_dates(df["start_date"])
         return [Client(**_date_record(record, ["start_date"])) for record in df.to_dict("records")]
 
     def services(self) -> list[Service]:
@@ -75,11 +79,17 @@ class SeedRepository:
         return [PricingPlan(**record) for record in df.to_dict("records")]
 
     def subscriptions(self) -> list[ClientSubscription]:
-        return [
-            ClientSubscription(id=1, client_id=1, pricing_plan_id=1, start_date=date(2026, 4, 1)),
-            ClientSubscription(id=2, client_id=2, pricing_plan_id=2, start_date=date(2026, 6, 1)),
-            ClientSubscription(id=3, client_id=3, pricing_plan_id=2, start_date=date(2026, 6, 1)),
-        ]
+        df = pd.read_csv(self.data_path / "seed_client_subscriptions.csv")
+        df["start_date"] = _parse_dates(df["start_date"])
+        df["end_date"] = _parse_dates(df["end_date"])
+        records = []
+        for record in df.to_dict("records"):
+            record = _date_record(record, ["start_date", "end_date"])
+            for key in ["end_date", "notes"]:
+                if pd.isna(record.get(key)):
+                    record[key] = None
+            records.append(record)
+        return [ClientSubscription(**record) for record in records]
 
     def usage_events(self) -> list[UsageEvent]:
         df = pd.read_csv(self.data_path / "seed_usage.csv", parse_dates=["event_timestamp"])
@@ -92,8 +102,14 @@ class SeedRepository:
 
     def cost_items(self) -> list[CostItem]:
         df = pd.read_csv(self.data_path / "seed_costs.csv")
+        if "start_date" in df.columns:
+            df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
         records = df.fillna("").to_dict("records")
-        return [CostItem(**record) for record in records]
+        normalized_records = []
+        for record in records:
+            record = _date_record(record, ["start_date"])
+            normalized_records.append(record)
+        return [CostItem(**record) for record in normalized_records]
 
     def revenue_events(self) -> list[RevenueEvent]:
         events: list[RevenueEvent] = []
@@ -101,21 +117,41 @@ class SeedRepository:
         for month in self.available_months():
             for client in self.active_clients(month):
                 plan = self.active_plan_for_client_month(client.id, month)
+                subscription = self.active_subscription_for_client_month(client.id, month)
                 usage = self.usage_for_client_month(client.id, month)
-                amount = calculate_client_revenue(usage, plan)
-                events.append(
-                    RevenueEvent(
-                        id=event_id,
-                        client_id=client.id,
-                        service_code="sigen",
-                        revenue_type="subscription_and_usage",
-                        amount=amount,
-                        currency="MXN",
-                        event_timestamp=pd.Timestamp(f"{month}-28").to_pydatetime(),
-                        description=f"{plan.name} plan revenue for {month}",
+                period_month = pd.Timestamp(f"{month}-01").date()
+                subscription_amount = calculate_subscription_revenue(plan, subscription, period_month)
+                usage_amount = calculate_usage_revenue(usage, plan)
+                has_usage_activity = bool(usage)
+                for revenue_type, service_code, amount, description in [
+                    (
+                        "subscription",
+                        "sigen",
+                        subscription_amount,
+                        f"{plan.name} fixed subscription revenue for {month}",
+                    ),
+                    (
+                        "usage",
+                        "usage",
+                        usage_amount,
+                        f"{plan.name} billable usage revenue for {month}",
+                    ),
+                ]:
+                    if amount == 0 and not (revenue_type == "usage" and has_usage_activity):
+                        continue
+                    events.append(
+                        RevenueEvent(
+                            id=event_id,
+                            client_id=client.id,
+                            service_code=service_code,
+                            revenue_type=revenue_type,
+                            amount=amount,
+                            currency="MXN",
+                            event_timestamp=pd.Timestamp(f"{month}-28").to_pydatetime(),
+                            description=description,
+                        )
                     )
-                )
-                event_id += 1
+                    event_id += 1
         return events
 
     def active_clients(self, month: str) -> list[Client]:
@@ -123,7 +159,8 @@ class SeedRepository:
         active_client_ids = {
             subscription.client_id
             for subscription in self.subscriptions()
-            if subscription.start_date <= month_start
+            if subscription.status == "active"
+            and subscription.start_date <= month_start
             and (subscription.end_date is None or subscription.end_date >= month_start)
         }
         return [client for client in self.clients() if client.id in active_client_ids]
@@ -132,12 +169,12 @@ class SeedRepository:
         return self.active_plan_for_client_month(client_id, self.available_months()[-1])
 
     def active_plan_for_client_month(self, client_id: int, month: str) -> PricingPlan:
-        subscription = self._active_subscription_for_client_month(client_id, month)
+        subscription = self.active_subscription_for_client_month(client_id, month)
         if subscription is None:
             raise ValueError(f"Client {client_id} has no active subscription in {month}")
         return next(plan for plan in self.pricing_plans() if plan.id == subscription.pricing_plan_id)
 
-    def _active_subscription_for_client_month(self, client_id: int, month: str) -> ClientSubscription | None:
+    def active_subscription_for_client_month(self, client_id: int, month: str) -> ClientSubscription | None:
         month_start = pd.Timestamp(f"{month}-01").date()
         return next(
             (
@@ -169,12 +206,12 @@ class SeedRepository:
 
     def client_profitability(self, client_id: int, month: str) -> ClientProfitability:
         usage = self.usage_for_client_month(client_id, month)
-        subscription = self._active_subscription_for_client_month(client_id, month)
+        subscription = self.active_subscription_for_client_month(client_id, month)
         if subscription is None:
             revenue = Decimal("0")
         else:
             plan = next(plan for plan in self.pricing_plans() if plan.id == subscription.pricing_plan_id)
-            revenue = calculate_client_revenue(usage, plan)
+            revenue = calculate_client_revenue(usage, plan, subscription, pd.Timestamp(f"{month}-01").date())
         variable_cost = calculate_variable_cost(usage, self.cost_rates())
         return ClientProfitability(
             client_id=client_id,
@@ -184,6 +221,30 @@ class SeedRepository:
             gross_margin_percentage=calculate_gross_margin_percentage(revenue, variable_cost),
         )
 
+    def client_revenue_split(self, client_id: int, month: str) -> dict[str, Decimal]:
+        subscription = self.active_subscription_for_client_month(client_id, month)
+        if subscription is None:
+            return {"subscription": Decimal("0"), "usage": Decimal("0"), "total": Decimal("0")}
+        plan = next(plan for plan in self.pricing_plans() if plan.id == subscription.pricing_plan_id)
+        usage = self.usage_for_client_month(client_id, month)
+        period_month = pd.Timestamp(f"{month}-01").date()
+        subscription_revenue = calculate_subscription_revenue(plan, subscription, period_month)
+        usage_revenue = calculate_usage_revenue(usage, plan)
+        return {
+            "subscription": subscription_revenue,
+            "usage": usage_revenue,
+            "total": subscription_revenue + usage_revenue,
+        }
+
+    def monthly_revenue_split(self, month: str) -> dict[str, Decimal]:
+        split = {"subscription": Decimal("0"), "usage": Decimal("0"), "total": Decimal("0")}
+        for client in self.active_clients(month):
+            client_split = self.client_revenue_split(client.id, month)
+            split["subscription"] += client_split["subscription"]
+            split["usage"] += client_split["usage"]
+            split["total"] += client_split["total"]
+        return split
+
     def monthly_summary(self, month: str) -> dict[str, Decimal]:
         usage = self.usage_for_month(month)
         revenue = sum(
@@ -191,7 +252,7 @@ class SeedRepository:
             Decimal("0"),
         )
         variable_cost = calculate_variable_cost(usage, self.cost_rates())
-        fixed_cost = calculate_fixed_costs(self.cost_items())
+        fixed_cost = calculate_fixed_costs(self.cost_items(), pd.Timestamp(f"{month}-01").date())
         gross_margin = calculate_gross_margin(revenue, variable_cost)
         operating_margin = gross_margin - fixed_cost
         return {
@@ -207,7 +268,8 @@ class SeedRepository:
         totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         for client in self.active_clients(month):
             plan = self.active_plan_for_client_month(client.id, month)
-            totals["SIGEN"] += Decimal(str(plan.monthly_fixed_fee))
+            subscription = self.active_subscription_for_client_month(client.id, month)
+            totals["SIGEN"] += calculate_subscription_revenue(plan, subscription, pd.Timestamp(f"{month}-01").date())
         for client in self.active_clients(month):
             plan = self.active_plan_for_client_month(client.id, month)
             for event in self.usage_for_client_month(client.id, month):
@@ -230,9 +292,20 @@ class SeedRepository:
 
 def _date_record(record: dict, keys: list[str]) -> dict:
     for key in keys:
-        if hasattr(record[key], "date"):
+        if pd.isna(record.get(key)):
+            record[key] = None
+        elif hasattr(record[key], "date"):
             record[key] = record[key].date()
     return record
+
+
+def _parse_dates(series: pd.Series) -> pd.Series:
+    values = series.astype("string").str.strip()
+    parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    iso_mask = values.str.match(r"^\d{4}-\d{2}-\d{2}$", na=False)
+    parsed.loc[iso_mask] = pd.to_datetime(values.loc[iso_mask], format="%Y-%m-%d", errors="coerce")
+    parsed.loc[~iso_mask] = pd.to_datetime(values.loc[~iso_mask], errors="coerce", dayfirst=True)
+    return parsed
 
 
 def _service_label(service_code: str) -> str:

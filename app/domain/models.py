@@ -25,6 +25,8 @@ class Service(BaseModel):
 class PricingPlan(BaseModel):
     id: int
     name: str
+    setup_fee: Decimal = Decimal("0")
+    annual_fee: Decimal = Decimal("0")
     monthly_fixed_fee: Decimal = Decimal("0")
     included_documents: int = 0
     included_validations: int = 0
@@ -45,6 +47,7 @@ class ClientSubscription(BaseModel):
     start_date: date
     end_date: date | None = None
     status: str = "active"
+    notes: str | None = None
 
 
 class UsageEvent(BaseModel):
@@ -67,6 +70,8 @@ class CostItem(BaseModel):
     service_line: str | None = None
     cost_type: str
     monthly_amount: Decimal = Decimal("0")
+    one_time_amount: Decimal = Decimal("0")
+    start_date: date | None = None
     unit_cost: Decimal = Decimal("0")
     unit: str | None = None
     currency: str = "MXN"

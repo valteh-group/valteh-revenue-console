@@ -88,11 +88,11 @@ def _client_detail_content(client_id: int):
     invoice_rows = [
         {
             "date": event.event_timestamp.strftime("%Y-%m-%d"),
-            "type": event.revenue_type,
+            "income_type": _revenue_type_label(event.revenue_type),
             "amount": format_mxn(event.amount),
             "description": event.description,
         }
-        for event in repo.revenue_events()
+        for event in sorted(repo.revenue_events(), key=lambda item: (item.event_timestamp, item.revenue_type))
         if event.client_id == client.id
     ]
     return html.Div(
@@ -133,3 +133,11 @@ def _event_price(event_type: str, plan) -> float:
         "blockchain.folio_mint": plan.price_per_property_mint,
     }
     return float(price_map.get(event_type, 0))
+
+
+def _revenue_type_label(revenue_type: str) -> str:
+    labels = {
+        "subscription": "Subscription (fixed)",
+        "usage": "Usage (variable)",
+    }
+    return labels.get(revenue_type, revenue_type)

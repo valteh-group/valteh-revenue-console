@@ -35,6 +35,8 @@ class PricingPlanORM(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    setup_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    annual_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     monthly_fixed_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     included_documents: Mapped[int] = mapped_column(default=0)
     included_validations: Mapped[int] = mapped_column(default=0)
@@ -57,6 +59,7 @@ class ClientSubscriptionORM(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(40), default="active")
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class UsageEventORM(Base):
@@ -83,6 +86,8 @@ class CostItemORM(Base):
     service_line: Mapped[str | None] = mapped_column(String(80))
     cost_type: Mapped[str] = mapped_column(String(40), nullable=False)
     monthly_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    one_time_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    start_date: Mapped[date | None] = mapped_column(Date)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     unit: Mapped[str | None] = mapped_column(String(80))
     currency: Mapped[str] = mapped_column(String(3), default="MXN")

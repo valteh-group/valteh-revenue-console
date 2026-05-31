@@ -15,6 +15,8 @@ def layout():
             "service_line": item.service_line or "Shared",
             "cost_type": item.cost_type,
             "monthly_amount": format_mxn(item.monthly_amount),
+            "one_time_amount": format_mxn(item.one_time_amount),
+            "start_date": item.start_date.isoformat() if item.start_date else "",
             "unit_cost": f"{float(item.unit_cost):,.4f}",
             "unit": item.unit or "",
             "active": item.active,

@@ -93,6 +93,7 @@ The app also supports `python -m app.main` and reads the host-provided `PORT` en
 The app reads the current pilot seed data from four CSV files:
 
 - `data/seed_clients.csv`
+- `data/seed_client_subscriptions.csv`
 - `data/seed_costs.csv`
 - `data/seed_usage.csv`
 - `data/seed_pricing_plans.csv`
@@ -103,6 +104,7 @@ Pilot assumptions are based on:
 - Notary document-validation logic of roughly 2 people per registry matter and 6-8 documents per person.
 - Current SAREMI pilot infrastructure cost: Hetzner CX41 at about $370 MXN/month plus Claude document analysis at about $0.95 MXN/document.
 - Future-state blockchain/BaaS cost ranges from `modelo economico.pdf`, included as inactive benchmark cost rows because the current pilot is focused on SAREMI, some Graphos visualization, and lightweight blockchain audit anchoring.
+- Subscription history lives in `seed_client_subscriptions.csv`, so each client can start, stop, or switch plans over time. Setup, annual, monthly fixed, and variable usage fees live only in `seed_pricing_plans.csv`.
 
 The repository layer in `app/data/repositories.py` exposes this data to the UI and domain logic. `app/data/database.py` and `app/data/schemas.py` define the SQLAlchemy foundation for moving from CSV-backed local data to SQLite or PostgreSQL persistence.
 

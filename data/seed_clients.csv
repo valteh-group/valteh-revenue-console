@@ -1,4 +1,4 @@
 id,name,client_type,status,start_date,notes
 1,"Notaria 38 Queretaro, Qro.",notary,active,2026-04-01,"Pilot client; among the larger notaries in Queretaro and the first SAREMI validation pilot."
-2,"Notaria Queretaro Early Access",notary,pipeline,2026-06-01,"Second Queretaro notary for early-access onboarding after the Notaria 38 pilot."
-3,"Notaria Celaya, Guanajuato",notary,pipeline,2026-06-01,"Regional expansion candidate for a nearby Guanajuato market."
+2,"(test) Notaria X Queretaro, Qro.",notary,pipeline,2026-06-01,"Second Queretaro notary for early-access onboarding after the Notaria 38 pilot."
+3,"(test) Notaria X Celaya, Gto.",notary,pipeline,2026-06-01,"Regional expansion candidate for a nearby Guanajuato market."

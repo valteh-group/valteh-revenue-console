@@ -33,6 +33,17 @@ body {
   position: relative;
 }
 
+.revenue-card-toggle {
+  cursor: pointer;
+}
+
+.revenue-split-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  line-height: 1.65;
+}
+
 .kpi-tooltip {
   background: #111827;
   border-radius: 6px;

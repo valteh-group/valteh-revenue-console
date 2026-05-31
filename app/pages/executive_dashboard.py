@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 import dash_bootstrap_components as dbc
-from dash import Input, Output, dcc, html
+from dash import Input, Output, State, dcc, html
 
 from app.components.charts import bar_chart, pie_chart
 from app.components.filters import month_filter
@@ -35,6 +35,14 @@ def register_callbacks(app) -> None:
     def update_dashboard(month: str):
         return _dashboard_content(month)
 
+    @app.callback(
+        Output("executive-monthly-revenue-content", "children"),
+        Input("executive-monthly-revenue", "n_clicks"),
+        State("executive-month-filter", "value"),
+    )
+    def toggle_revenue_card(n_clicks: int | None, month: str):
+        return _monthly_revenue_card_content(month, show_split=bool(n_clicks and n_clicks % 2))
+
 
 def _dashboard_content(month: str):
     repo = SeedRepository()
@@ -45,7 +53,9 @@ def _dashboard_content(month: str):
     revenue = summary["revenue"]
     gross_margin_pct = (summary["gross_margin"] / revenue) if revenue else Decimal("0")
     operating_margin_pct = (summary["operating_margin"] / revenue) if revenue else Decimal("0")
-    break_even_usage = calculate_break_even_usage(summary["fixed_cost"], Decimal("6"), Decimal("1.10"))
+    unit_price = _average_document_price(repo, month)
+    unit_variable_cost = repo.cost_rates().get("saremi.document_validation", Decimal("0"))
+    break_even_usage = calculate_break_even_usage(summary["fixed_cost"], unit_price, unit_variable_cost)
     client_rows = _client_rows(repo, month)
     lowest_margin_rows = sorted(client_rows, key=lambda row: row["gross_margin_percentage"])[:5]
 
@@ -54,12 +64,7 @@ def _dashboard_content(month: str):
             dbc.Row(
                 [
                     dbc.Col(
-                        kpi_card(
-                            "Monthly Revenue",
-                            format_mxn(revenue),
-                            tooltip="Total subscription and billable usage revenue recognized in the selected month.",
-                            card_id="executive-monthly-revenue",
-                        ),
+                        _monthly_revenue_card(month),
                         md=3,
                     ),
                     dbc.Col(
@@ -122,7 +127,7 @@ def _dashboard_content(month: str):
                         kpi_card(
                             "Break-even Usage",
                             f"{break_even_usage:,} docs",
-                            "At $6 price and $1.10 unit cost",
+                            f"At {format_mxn(unit_price)} price and {format_mxn(unit_variable_cost)} unit cost",
                             tooltip="Documents needed to cover fixed costs: fixed costs divided by unit "
                             "contribution margin.",
                             card_id="executive-break-even-usage",
@@ -196,8 +201,79 @@ def _client_rows(repo: SeedRepository, month: str) -> list[dict]:
     return sorted(rows, key=lambda row: row["revenue_value"], reverse=True)
 
 
+def _monthly_revenue_card(month: str) -> html.Div:
+    tooltip = (
+        "Total revenue recognized in the selected month. Click to split it into fixed subscription revenue "
+        "and variable usage revenue."
+    )
+    return html.Div(
+        [
+            dbc.Card(
+                dbc.CardBody(
+                    _monthly_revenue_card_content(month, show_split=False),
+                    id="executive-monthly-revenue-content",
+                ),
+                className="shadow-sm border-0 h-100",
+            ),
+            html.Div(tooltip, className="kpi-tooltip", id="executive-monthly-revenue-tooltip", role="tooltip"),
+        ],
+        className="kpi-card-wrapper revenue-card-toggle h-100",
+        id="executive-monthly-revenue",
+        n_clicks=0,
+        tabIndex=0,
+        role="button",
+        **{"aria-describedby": "executive-monthly-revenue-tooltip"},
+    )
+
+
+def _monthly_revenue_card_content(month: str, show_split: bool) -> list:
+    repo = SeedRepository()
+    split = repo.monthly_revenue_split(month)
+    if show_split:
+        return [
+            html.Div("Monthly Revenue Split", className="text-muted small text-uppercase"),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Span("Subscription (fixed)", className="text-muted"),
+                            html.Strong(format_mxn(split["subscription"])),
+                        ],
+                        className="revenue-split-row",
+                    ),
+                    html.Div(
+                        [
+                            html.Span("Usage (variable)", className="text-muted"),
+                            html.Strong(format_mxn(split["usage"])),
+                        ],
+                        className="revenue-split-row",
+                    ),
+                ],
+                className="mb-1",
+            ),
+            html.Div("Click to return to total", className="small text-muted"),
+        ]
+    return [
+        html.Div("Monthly Revenue", className="text-muted small text-uppercase"),
+        html.Div(format_mxn(split["total"]), className="h3 mb-1 text-primary"),
+        html.Div("Click for fixed / variable split", className="small text-muted"),
+    ]
+
+
 def _display_rows(rows: list[dict]) -> list[dict]:
     return [{key: value for key, value in row.items() if key != "revenue_value"} for row in rows]
+
+
+def _average_document_price(repo: SeedRepository, month: str) -> Decimal:
+    active_plans = [repo.active_plan_for_client_month(client.id, month) for client in repo.active_clients(month)]
+    document_prices = [Decimal(str(plan.price_per_document)) for plan in active_plans if plan.price_per_document > 0]
+    if not document_prices:
+        document_prices = [
+            Decimal(str(plan.price_per_document)) for plan in repo.pricing_plans() if plan.price_per_document > 0
+        ]
+    if not document_prices:
+        return Decimal("0")
+    return sum(document_prices, Decimal("0")) / Decimal(len(document_prices))
 
 
 def _margin_by_service(revenue: dict[str, Decimal], costs: dict[str, Decimal]) -> dict[str, Decimal]:

@@ -15,6 +15,8 @@ def layout():
     rows = [
         {
             "plan": plan.name,
+            "setup_fee": format_mxn(plan.setup_fee),
+            "annual_fee": format_mxn(plan.annual_fee),
             "monthly_fixed_fee": format_mxn(plan.monthly_fixed_fee),
             "included_documents": plan.included_documents,
             "included_validations": plan.included_validations,
