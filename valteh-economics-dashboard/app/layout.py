@@ -1,0 +1,35 @@
+import dash_bootstrap_components as dbc
+from dash import dcc, html
+
+NAV_ITEMS = [
+    ("Executive Dashboard", "/"),
+    ("Clients / Notaries", "/clients"),
+    ("Client Detail", "/client-detail"),
+    ("Costs", "/costs"),
+    ("Pricing", "/pricing"),
+    ("Usage", "/usage"),
+    ("Scenarios", "/scenarios"),
+]
+
+
+def app_layout() -> html.Div:
+    sidebar = html.Nav(
+        [
+            html.Div("Valteh", className="h4 mb-0"),
+            html.Div("Economics Dashboard", className="text-muted small mb-4"),
+            dbc.Nav(
+                [dbc.NavLink(label, href=href, active="exact") for label, href in NAV_ITEMS],
+                vertical=True,
+                pills=True,
+            ),
+        ],
+        className="sidebar bg-white border-end p-4",
+    )
+    return html.Div(
+        [
+            dcc.Location(id="url"),
+            sidebar,
+            html.Main(id="page-content", className="content p-4"),
+        ],
+        className="app-shell",
+    )

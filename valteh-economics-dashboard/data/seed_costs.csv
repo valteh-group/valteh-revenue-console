@@ -1,0 +1,13 @@
+id,name,category,service_line,cost_type,monthly_amount,unit_cost,unit,currency,active
+1,Hetzner CX41 pilot server,Infrastructure,Shared,fixed,370,0,,MXN,true
+2,Claude document analysis,AI,SAREMI,variable,0,0.95,saremi.document_validation,MXN,true
+3,Local document preprocessing,AI,SAREMI,variable,0,0.05,saremi.document_validation,MXN,true
+4,ID validation workflow,Operations,SAREMI,variable,0,0.10,saremi.ine_validation,MXN,true
+5,Graphos local query compute,Compute,Graphos,variable,0,0.02,graphos.query,MXN,true
+6,Graphos case analysis compute,Compute,Graphos,variable,0,0.10,graphos.case_analysis,MXN,true
+7,Local blockchain audit anchor,Blockchain,Blockchain / BaaS,variable,0,0.01,blockchain.asiento_registration,MXN,true
+8,Local blockchain folio placeholder,Blockchain,Blockchain / BaaS,variable,0,0.02,blockchain.folio_mint,MXN,true
+9,AWS BaaS pilot infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,5100,0,,MXN,false
+10,AWS BaaS production infrastructure benchmark,Infrastructure,Blockchain / BaaS,fixed,15300,0,,MXN,false
+11,Blockchain DevOps engineer benchmark,People,Blockchain / BaaS,fixed,45000,0,,MXN,false
+12,Administrative and accounting benchmark,Operations,Shared,fixed,8000,0,,MXN,false
