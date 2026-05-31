@@ -5,6 +5,7 @@ from dash import Input, Output, dcc, html
 from app.components.charts import bar_chart, line_chart
 from app.components.tables import data_table
 from app.data.repositories import SeedRepository
+from app.domain.unit_economics import calculate_operating_margin
 from app.utils.currency import format_mxn
 
 
@@ -72,7 +73,7 @@ def _client_detail_content(client_id: int):
                 sum(float(event.quantity) for event in repo.usage_for_client_month(client.id, month))
                 for month in months
             ],
-            "gross_margin": [float(repo.client_profitability(client.id, month).gross_margin) for month in months],
+            "operating_margin": [_client_operating_margin(repo, client.id, month) for month in months],
         }
     )
     usage_rows = [
@@ -110,7 +111,8 @@ def _client_detail_content(client_id: int):
                 [
                     dbc.Col(dcc.Graph(figure=line_chart(trend, "month", "usage", "Historical Usage Trend")), md=6),
                     dbc.Col(
-                        dcc.Graph(figure=line_chart(trend, "month", "gross_margin", "Historical Margin Trend")), md=6
+                        dcc.Graph(figure=line_chart(trend, "month", "operating_margin", "Historical Margin Trend")),
+                        md=6,
                     ),
                 ],
                 className="mb-4",
@@ -133,6 +135,19 @@ def _event_price(event_type: str, plan) -> float:
         "blockchain.folio_mint": plan.price_per_property_mint,
     }
     return float(price_map.get(event_type, 0))
+
+
+def _client_operating_margin(repo: SeedRepository, client_id: int, month: str) -> float:
+    profitability = repo.client_profitability(client_id, month)
+    active_clients = repo.active_clients(month)
+    allocated_fixed_cost = repo.monthly_summary(month)["fixed_cost"] / len(active_clients) if active_clients else 0
+    return float(
+        calculate_operating_margin(
+            profitability.revenue,
+            profitability.variable_cost,
+            allocated_fixed_cost,
+        )
+    )
 
 
 def _revenue_type_label(revenue_type: str) -> str:

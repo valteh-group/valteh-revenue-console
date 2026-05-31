@@ -5,7 +5,6 @@ import pandas as pd
 import plotly.express as px
 from dash import dcc, html
 
-from app.components.kpi_card import kpi_card
 from app.components.tables import data_table
 from app.data.repositories import SeedRepository
 from app.domain.scenario_forecast import ScenarioMonth, forecast_scenarios
@@ -55,8 +54,8 @@ def _assumption_summary(latest_month: str) -> dbc.Alert:
             html.Strong(f"Forecast starts from {latest_month}. "),
             html.Span(
                 "Base keeps current clients, revenue, and costs. Pessimistic increases fixed costs by 10%, "
-                "variable costs by 20%, removes the largest client, and adds no clients. Optimistic reduces "
-                "variable costs by 10% and adds one average new client from month 4."
+                "variable costs by 20%, removes the largest client from month 2, and adds no clients. "
+                "Optimistic reduces variable costs by 10% and adds one average new client from month 4."
             ),
         ],
         color="light",
@@ -70,12 +69,28 @@ def _scenario_kpis(forecast: list[ScenarioMonth]) -> dbc.Row:
     return dbc.Row(
         [
             dbc.Col(
-                kpi_card(
-                    f"{row.scenario} Revenue",
-                    format_mxn(row.revenue),
-                    f"{row.clients} clients in {final_month}",
-                    tooltip="Projected monthly revenue at the end of the six-month forecast.",
-                    card_id=f"scenario-{row.scenario.lower()}-revenue",
+                dbc.Card(
+                    dbc.CardBody(
+                        [
+                            html.Div(row.scenario, className="scenario-card-title small text-uppercase"),
+                            html.Div(
+                                [
+                                    html.Span("Revenue"),
+                                    html.Strong(format_mxn(row.revenue)),
+                                ],
+                                className="revenue-split-row",
+                            ),
+                            html.Div(
+                                [
+                                    html.Span("Total costs"),
+                                    html.Strong(format_mxn(row.fixed_cost + row.variable_cost)),
+                                ],
+                                className="revenue-split-row",
+                            ),
+                            html.Div(f"{row.clients} clients in {final_month}", className="small text-muted mt-1"),
+                        ]
+                    ),
+                    className=f"scenario-summary-card scenario-summary-{row.scenario.lower()} shadow-sm border-0 h-100",
                 ),
                 md=4,
             )

@@ -13,7 +13,7 @@ def test_forecast_months_starts_from_base_month() -> None:
     assert forecast_months("2026-06", 6) == ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"]
 
 
-def test_pessimistic_drops_largest_client_and_increases_costs() -> None:
+def test_pessimistic_drops_largest_client_from_second_month_and_increases_costs() -> None:
     profiles = [
         ClientEconomicsProfile(client_id=1, revenue=Decimal("10000"), variable_cost=Decimal("1000")),
         ClientEconomicsProfile(client_id=2, revenue=Decimal("4000"), variable_cost=Decimal("500")),
@@ -25,12 +25,16 @@ def test_pessimistic_drops_largest_client_and_increases_costs() -> None:
         drop_largest_client=True,
     )
 
-    forecast = month_forecast(config, "2026-06", 1, profiles, Decimal("1000"))
+    first_month = month_forecast(config, "2026-06", 1, profiles, Decimal("1000"))
+    second_month = month_forecast(config, "2026-07", 2, profiles, Decimal("1000"))
 
-    assert forecast.clients == 1
-    assert forecast.revenue == Decimal("4000")
-    assert forecast.fixed_cost == Decimal("1100.00")
-    assert forecast.variable_cost == Decimal("600.00")
+    assert first_month.clients == 2
+    assert first_month.revenue == Decimal("14000")
+    assert first_month.variable_cost == Decimal("1800.00")
+    assert second_month.clients == 1
+    assert second_month.revenue == Decimal("4000")
+    assert second_month.fixed_cost == Decimal("1100.00")
+    assert second_month.variable_cost == Decimal("600.00")
 
 
 def test_optimistic_adds_average_client_from_join_month() -> None:

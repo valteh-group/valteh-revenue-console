@@ -103,7 +103,7 @@ class SeedRepository:
     def cost_items(self) -> list[CostItem]:
         df = pd.read_csv(self.data_path / "seed_costs.csv")
         if "start_date" in df.columns:
-            df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+            df["start_date"] = _parse_dates(df["start_date"])
         records = df.fillna("").to_dict("records")
         normalized_records = []
         for record in records:

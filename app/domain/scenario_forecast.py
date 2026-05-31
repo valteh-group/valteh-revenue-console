@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from app.domain.unit_economics import calculate_gross_margin, calculate_operating_margin, money
+from app.domain.unit_economics import calculate_operating_margin, money
 
 if TYPE_CHECKING:
     from app.data.repositories import SeedRepository
@@ -18,6 +18,7 @@ class ScenarioConfig:
     fixed_cost_multiplier: Decimal = Decimal("1")
     variable_cost_multiplier: Decimal = Decimal("1")
     drop_largest_client: bool = False
+    largest_client_drop_month: int = 2
     add_new_client: bool = False
     new_client_join_month: int = 4
 
@@ -37,7 +38,6 @@ class ScenarioMonth:
     revenue: Decimal
     fixed_cost: Decimal
     variable_cost: Decimal
-    gross_margin: Decimal
     operating_margin: Decimal
 
 
@@ -113,7 +113,6 @@ def month_forecast(
         config.variable_cost_multiplier
     )
     fixed_cost = money(base_fixed_cost) * money(config.fixed_cost_multiplier)
-    gross_margin = calculate_gross_margin(revenue, variable_cost)
     operating_margin = calculate_operating_margin(revenue, variable_cost, fixed_cost)
     return ScenarioMonth(
         scenario=config.name,
@@ -122,7 +121,6 @@ def month_forecast(
         revenue=revenue,
         fixed_cost=fixed_cost,
         variable_cost=variable_cost,
-        gross_margin=gross_margin,
         operating_margin=operating_margin,
     )
 
@@ -133,7 +131,7 @@ def scenario_client_profiles(
     base_profiles: list[ClientEconomicsProfile],
 ) -> list[ClientEconomicsProfile]:
     profiles = list(base_profiles)
-    if config.drop_largest_client and profiles:
+    if config.drop_largest_client and month_index >= config.largest_client_drop_month and profiles:
         largest_client = max(profiles, key=lambda profile: profile.revenue)
         profiles = [profile for profile in profiles if profile.client_id != largest_client.client_id]
     if config.add_new_client and month_index >= config.new_client_join_month and profiles:

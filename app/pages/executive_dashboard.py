@@ -8,7 +8,7 @@ from app.components.filters import month_filter
 from app.components.kpi_card import kpi_card
 from app.components.tables import data_table
 from app.data.repositories import SeedRepository
-from app.domain.unit_economics import calculate_break_even_usage
+from app.domain.unit_economics import calculate_break_even_usage, money
 from app.utils.currency import format_mxn, format_percent
 
 
@@ -36,7 +36,7 @@ def register_callbacks(app) -> None:
         return _dashboard_content(month)
 
     @app.callback(
-        Output("executive-monthly-revenue-content", "children"),
+        Output("executive-monthly-revenue-dynamic", "children"),
         Input("executive-monthly-revenue", "n_clicks"),
         State("executive-month-filter", "value"),
     )
@@ -51,13 +51,12 @@ def _dashboard_content(month: str):
     cost_by_service = repo.cost_by_service(month)
     variable_cost = summary["variable_cost"]
     revenue = summary["revenue"]
-    gross_margin_pct = (summary["gross_margin"] / revenue) if revenue else Decimal("0")
     operating_margin_pct = (summary["operating_margin"] / revenue) if revenue else Decimal("0")
     unit_price = _average_document_price(repo, month)
     unit_variable_cost = repo.cost_rates().get("saremi.document_validation", Decimal("0"))
     break_even_usage = calculate_break_even_usage(summary["fixed_cost"], unit_price, unit_variable_cost)
     client_rows = _client_rows(repo, month)
-    lowest_margin_rows = sorted(client_rows, key=lambda row: row["gross_margin_percentage"])[:5]
+    lowest_margin_rows = sorted(client_rows, key=lambda row: row["operating_margin_percentage"])[:5]
 
     return html.Div(
         [
@@ -89,21 +88,6 @@ def _dashboard_content(month: str):
                     ),
                     dbc.Col(
                         kpi_card(
-                            "Gross Margin",
-                            format_percent(gross_margin_pct),
-                            color="success",
-                            tooltip="Gross margin percentage: (revenue minus variable costs) divided by revenue.",
-                            card_id="executive-gross-margin",
-                        ),
-                        md=3,
-                    ),
-                ],
-                className="g-3 mb-3",
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(
-                        kpi_card(
                             "Operating Margin",
                             format_percent(operating_margin_pct),
                             color="success" if operating_margin_pct > 0 else "danger",
@@ -113,6 +97,11 @@ def _dashboard_content(month: str):
                         ),
                         md=3,
                     ),
+                ],
+                className="g-3 mb-3",
+            ),
+            dbc.Row(
+                [
                     dbc.Col(
                         kpi_card(
                             "Burn Rate",
@@ -186,16 +175,22 @@ def _dashboard_content(month: str):
 
 def _client_rows(repo: SeedRepository, month: str) -> list[dict]:
     rows = []
+    fixed_cost = repo.monthly_summary(month)["fixed_cost"]
+    active_client_count = len(repo.active_clients(month))
+    allocated_fixed_cost = fixed_cost / Decimal(active_client_count) if active_client_count else Decimal("0")
     for client in repo.active_clients(month):
         profitability = repo.client_profitability(client.id, month)
+        operating_margin = profitability.gross_margin - allocated_fixed_cost
+        operating_margin_percentage = operating_margin / money(profitability.revenue) if profitability.revenue else 0
         rows.append(
             {
                 "client": client.name,
                 "revenue": format_mxn(profitability.revenue),
                 "revenue_value": float(profitability.revenue),
                 "variable_cost": format_mxn(profitability.variable_cost),
-                "gross_margin": format_mxn(profitability.gross_margin),
-                "gross_margin_percentage": float(profitability.gross_margin_percentage),
+                "allocated_fixed_cost": format_mxn(allocated_fixed_cost),
+                "operating_margin": format_mxn(operating_margin),
+                "operating_margin_percentage": float(operating_margin_percentage),
             }
         )
     return sorted(rows, key=lambda row: row["revenue_value"], reverse=True)
@@ -210,8 +205,12 @@ def _monthly_revenue_card(month: str) -> html.Div:
         [
             dbc.Card(
                 dbc.CardBody(
-                    _monthly_revenue_card_content(month, show_split=False),
-                    id="executive-monthly-revenue-content",
+                    [
+                        html.Div(
+                            _monthly_revenue_card_content(month, show_split=False),
+                            id="executive-monthly-revenue-dynamic",
+                        ),
+                    ],
                 ),
                 className="shadow-sm border-0 h-100",
             ),

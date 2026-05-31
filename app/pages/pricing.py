@@ -46,7 +46,7 @@ def layout():
                     numeric_input("Variable fee per blockchain transaction", "price-chain", 0.5),
                     numeric_input("Variable fee per folio/property mint", "price-mint", 0),
                     numeric_input("Revenue share percentage", "revenue-share", 0, 0.1),
-                    numeric_input("Target gross margin", "target-margin", 0.6, 0.05),
+                    numeric_input("Target unit margin", "target-margin", 0.6, 0.05),
                 ],
                 className="g-3 mb-4",
             ),
