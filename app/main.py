@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import dash
@@ -24,7 +25,9 @@ def create_app() -> dash.Dash:
 
 
 app = create_app()
+server = app.server
 
 
 if __name__ == "__main__":
-    app.run(debug=get_settings().debug, host="0.0.0.0", port=8050)
+    port = int(os.getenv("PORT", "8050"))
+    app.run(debug=get_settings().debug, host="0.0.0.0", port=port)

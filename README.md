@@ -26,7 +26,7 @@ The app tracks fixed costs, variable costs, usage, revenue, margins, pricing sce
 ## Install
 
 ```bash
-cd valteh-economics-dashboard
+cd Valteh_Revenue_App
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -76,6 +76,17 @@ ruff check .
 copy .env.example .env
 docker compose up --build
 ```
+
+## Deploy
+
+For Render or similar hosts, use the repository root as the project directory.
+
+```text
+Build command: pip install -e .
+Start command: gunicorn app.main:server
+```
+
+The app also supports `python -m app.main` and reads the host-provided `PORT` environment variable.
 
 ## Seed Data
 
