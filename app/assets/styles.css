@@ -65,6 +65,71 @@ body {
   font-weight: 700;
 }
 
+.field-label-row {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.field-info-wrapper {
+  display: inline-flex;
+  position: relative;
+}
+
+.field-info-icon {
+  align-items: center;
+  border: 1px solid #9ca3af;
+  border-radius: 50%;
+  color: #4b5563;
+  cursor: help;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 700;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+  width: 16px;
+}
+
+.field-tooltip {
+  background: #111827;
+  border-radius: 6px;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  left: -12px;
+  line-height: 1.35;
+  max-width: 280px;
+  opacity: 0;
+  padding: 8px 10px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  visibility: hidden;
+  width: max-content;
+  z-index: 20;
+}
+
+.field-tooltip::after {
+  border-color: #111827 transparent transparent transparent;
+  border-style: solid;
+  border-width: 6px 6px 0 6px;
+  bottom: -6px;
+  content: "";
+  left: 14px;
+  position: absolute;
+}
+
+.field-info-wrapper:hover .field-tooltip,
+.field-info-wrapper:focus-within .field-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
 .kpi-tooltip {
   background: #111827;
   border-radius: 6px;
