@@ -1,8 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Client(BaseModel):
@@ -65,17 +65,36 @@ class UsageEvent(BaseModel):
 
 class CostItem(BaseModel):
     id: int
+    cost_key: str
     name: str
+    provider: str | None = None
     category: str
     service_line: str | None = None
-    cost_type: str
-    monthly_amount: Decimal = Decimal("0")
-    one_time_amount: Decimal = Decimal("0")
+    cost_type: Literal["fixed", "variable", "one_time"]
+    charge_basis: str
+    quantity: Decimal = Field(default=Decimal("1"), ge=0)
+    unit_cost: Decimal = Field(default=Decimal("0"), ge=0)
+    unit: str
+    billing_frequency: Literal["monthly", "annual", "usage", "once"]
+    charge_day: int | None = Field(default=None, ge=1, le=31)
     start_date: date | None = None
-    unit_cost: Decimal = Decimal("0")
-    unit: str | None = None
+    end_date: date | None = None
     currency: str = "MXN"
-    active: bool = True
+    record_type: Literal["actual", "budget", "estimate"] = "actual"
+    enabled: bool = True
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_lifecycle(self) -> "CostItem":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+    @property
+    def configured_amount(self) -> Decimal:
+        """Amount for one configured recurrence or one-time occurrence."""
+
+        return self.quantity * self.unit_cost
 
 
 class RevenueEvent(BaseModel):

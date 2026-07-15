@@ -103,8 +103,24 @@ Pilot assumptions are based on:
 - Queretaro RPP request data from `solicitudes_RPP.xlsx`, which shows roughly 25.5k monthly state-level requests in the 2023 extract.
 - Notary document-validation logic of roughly 2 people per registry matter and 6-8 documents per person.
 - Current SAREMI pilot infrastructure cost: Hetzner CX41 at about $370 MXN/month plus Claude document analysis at about $0.95 MXN/document.
-- Future-state blockchain/BaaS cost ranges from `modelo economico.pdf`, included as inactive benchmark cost rows because the current pilot is focused on SAREMI, some Graphos visualization, and lightweight blockchain audit anchoring.
+- Future-state blockchain/BaaS cost ranges from `modelo economico.pdf`, included as `estimate` rows (excluded from actuals) because the current pilot is focused on SAREMI, some Graphos visualization, and lightweight blockchain audit anchoring.
 - Subscription history lives in `seed_client_subscriptions.csv`, so each client can start, stop, or switch plans over time. Setup, annual, monthly fixed, and variable usage fees live only in `seed_pricing_plans.csv`.
+
+### Maintain cost history
+
+`seed_costs.csv` is an effective-dated catalog. Each row is one version of a cost; `cost_key` identifies the
+same underlying service or contract across versions.
+
+When a cost changes, do not edit the historical amount in place:
+
+1. Set `end_date` on the current row to the day before the change.
+2. Add a row with a new unique `id`, the same `cost_key`, the new `start_date`, quantity, and unit cost.
+3. Leave `end_date` empty while the new version remains in force.
+
+Use `quantity` and `unit_cost` separately (for example, 3 users x 220 MXN), and use `charge_day` when the
+provider has a known recurring collection day. `record_type=actual` participates in reported costs;
+`budget` and `estimate` remain visible but are excluded from actual margins. Set `end_date` when a cost
+ceases to exist. `enabled` is an operational kill switch and should not replace lifecycle dates.
 
 The repository layer in `app/data/repositories.py` exposes this data to the UI and domain logic. `app/data/database.py` and `app/data/schemas.py` define the SQLAlchemy foundation for moving from CSV-backed local data to SQLite or PostgreSQL persistence.
 

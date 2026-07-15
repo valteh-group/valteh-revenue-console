@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
 
 from app.config import BASE_DIR, get_settings
-from app.domain.cost_engine import calculate_fixed_costs, calculate_variable_cost
+from app.domain.cost_engine import calculate_fixed_costs, calculate_variable_cost, is_cost_effective
 from app.domain.models import (
     Client,
     ClientProfitability,
@@ -102,14 +103,19 @@ class SeedRepository:
 
     def cost_items(self) -> list[CostItem]:
         df = pd.read_csv(self.data_path / "seed_costs.csv")
-        if "start_date" in df.columns:
-            df["start_date"] = _parse_dates(df["start_date"])
-        records = df.fillna("").to_dict("records")
+        for column in ["start_date", "end_date"]:
+            df[column] = _parse_dates(df[column])
+        records = df.to_dict("records")
         normalized_records = []
         for record in records:
-            record = _date_record(record, ["start_date"])
+            record = _date_record(record, ["start_date", "end_date"])
+            for key in ["provider", "service_line", "charge_day", "notes"]:
+                if pd.isna(record.get(key)):
+                    record[key] = None
             normalized_records.append(record)
-        return [CostItem(**record) for record in normalized_records]
+        items = [CostItem(**record) for record in normalized_records]
+        _validate_cost_versions(items)
+        return items
 
     def revenue_events(self) -> list[RevenueEvent]:
         events: list[RevenueEvent] = []
@@ -197,11 +203,12 @@ class SeedRepository:
     def usage_for_client_month(self, client_id: int, month: str) -> list[UsageEvent]:
         return [event for event in self.usage_for_month(month) if event.client_id == client_id]
 
-    def cost_rates(self) -> dict[str, Decimal]:
+    def cost_rates(self, as_of: date | None = None) -> dict[str, Decimal]:
+        as_of = as_of or date.today()
         rates: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         for item in self.cost_items():
-            if item.active and item.cost_type == "variable":
-                rates[item.unit or item.name] += Decimal(str(item.unit_cost))
+            if item.cost_type == "variable" and is_cost_effective(item, as_of):
+                rates[item.unit] += Decimal(str(item.unit_cost))
         return dict(rates)
 
     def client_profitability(self, client_id: int, month: str) -> ClientProfitability:
@@ -212,7 +219,7 @@ class SeedRepository:
         else:
             plan = next(plan for plan in self.pricing_plans() if plan.id == subscription.pricing_plan_id)
             revenue = calculate_client_revenue(usage, plan, subscription, pd.Timestamp(f"{month}-01").date())
-        variable_cost = calculate_variable_cost(usage, self.cost_rates())
+        variable_cost = calculate_variable_cost(usage, self.cost_items())
         return ClientProfitability(
             client_id=client_id,
             revenue=revenue,
@@ -251,7 +258,7 @@ class SeedRepository:
             (self.client_profitability(client.id, month).revenue for client in self.active_clients(month)),
             Decimal("0"),
         )
-        variable_cost = calculate_variable_cost(usage, self.cost_rates())
+        variable_cost = calculate_variable_cost(usage, self.cost_items())
         fixed_cost = calculate_fixed_costs(self.cost_items(), pd.Timestamp(f"{month}-01").date())
         gross_margin = calculate_gross_margin(revenue, variable_cost)
         operating_margin = gross_margin - fixed_cost
@@ -283,10 +290,10 @@ class SeedRepository:
 
     def cost_by_service(self, month: str) -> dict[str, Decimal]:
         totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-        rates = self.cost_rates()
+        cost_items = self.cost_items()
         for event in self.usage_for_month(month):
             service = _service_label(event.service_code)
-            totals[service] += Decimal(str(event.quantity)) * rates.get(event.event_type, Decimal("0"))
+            totals[service] += calculate_variable_cost([event], cost_items)
         return dict(totals)
 
 
@@ -306,6 +313,18 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     parsed.loc[iso_mask] = pd.to_datetime(values.loc[iso_mask], format="%Y-%m-%d", errors="coerce")
     parsed.loc[~iso_mask] = pd.to_datetime(values.loc[~iso_mask], errors="coerce", dayfirst=True)
     return parsed
+
+
+def _validate_cost_versions(items: list[CostItem]) -> None:
+    versions: dict[str, list[CostItem]] = defaultdict(list)
+    for item in items:
+        if item.enabled and item.record_type == "actual":
+            versions[item.cost_key].append(item)
+    for cost_key, cost_versions in versions.items():
+        ordered = sorted(cost_versions, key=lambda item: item.start_date or date.min)
+        for previous, current in zip(ordered, ordered[1:], strict=False):
+            if previous.end_date is None or current.start_date is None or current.start_date <= previous.end_date:
+                raise ValueError(f"Overlapping effective dates for cost_key '{cost_key}'")
 
 
 def _service_label(service_code: str) -> str:
