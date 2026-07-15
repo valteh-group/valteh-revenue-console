@@ -135,17 +135,44 @@ migrations/               Reserved for Alembic migrations
 4. Add pricing fields or event mapping in `app/domain/revenue_engine.py` if the service has billable units.
 5. Add charts or tables in the relevant page module if the service needs custom display.
 
-## Connect Future APIs
+## Connect Holding APIs (Operational Events)
 
-Integration placeholders live in `app/integrations/`:
+This console consumes operational events from the holding's source systems
+(`baas-qro`, `rpp-fraud-detection-system`, future `sigen-plus-front`). Source
+systems emit operational facts only; all pricing, cost, revenue, and margin
+logic stays in this app. The full contract and architecture live in:
 
-- `fetch_saremi_usage()`
-- `fetch_llm_token_usage()`
-- `fetch_graphos_usage()`
-- `fetch_blockchain_usage()`
-- `fetch_platform_clients()`
+- `docs/shared-operational-event-contract.md`
+- `docs/event-consumption-architecture.md`
 
-Replace the mock return values with REST client code, normalize the payloads into domain models, and persist them through a SQL repository. Keep API authentication and endpoints in `.env`, not in source code.
+### Pull pipeline (Phase 1: ingestion foundation)
+
+Each source system exposes `GET /api/operational-events` (cursor-paginated).
+This app pulls those pages and stores raw facts idempotently.
+
+- `app/domain/operational_events.py` — Pydantic contract models.
+- `app/integrations/operational_events_client.py` — HTTP client (`httpx`).
+- `app/integrations/ingestion.py` — idempotent sync, dedup by
+  `(source_system, source_event_id)`, cursor tracking.
+- `app/integrations/sync_runner.py` — entry point.
+
+Configure source URLs and tokens in `.env` (see `.env.example`), then run:
+
+```bash
+python -m app.integrations.sync_runner
+```
+
+Imported events land in `imported_operational_events`. Classification,
+normalization to `UsageEvent`, and economic calculation are later phases
+described in `docs/event-consumption-architecture.md`.
+
+### Legacy placeholders
+
+The earlier mock integration placeholders still live in `app/integrations/`
+(`fetch_saremi_usage()`, `fetch_llm_token_usage()`, `fetch_graphos_usage()`,
+`fetch_blockchain_usage()`, `fetch_platform_clients()`). They are superseded by
+the pull pipeline above and kept only as references. Keep API authentication and
+endpoints in `.env`, not in source code.
 
 ## Production Notes
 

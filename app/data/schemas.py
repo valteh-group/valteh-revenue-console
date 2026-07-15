@@ -1,7 +1,16 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -116,3 +125,80 @@ class ScenarioAssumptionORM(Base):
     assumption_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+
+
+class ImportedOperationalEventORM(Base):
+    """Raw operational facts imported from source systems.
+
+    Stores source events exactly as received, after minimal validation. Economic
+    interpretation never mutates these rows; classification and normalization
+    produce separate records. See docs/event-consumption-architecture.md.
+    """
+
+    __tablename__ = "imported_operational_events"
+    __table_args__ = (UniqueConstraint("source_system", "source_event_id", name="uq_source_event"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_system: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_event_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    event_category: Mapped[str | None] = mapped_column(String(80))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    received_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    correlation_id: Mapped[str | None] = mapped_column(String(120))
+    causation_id: Mapped[str | None] = mapped_column(String(160))
+    external_reference_id: Mapped[str | None] = mapped_column(String(160))
+    source_client_ref: Mapped[str | None] = mapped_column(String(160))
+    entity_id: Mapped[str | None] = mapped_column(String(160))
+    document_id: Mapped[str | None] = mapped_column(String(160))
+    document_hash: Mapped[str | None] = mapped_column(String(200))
+    property_id: Mapped[str | None] = mapped_column(String(160))
+    profile_id: Mapped[str | None] = mapped_column(String(160))
+    transaction_id: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str | None] = mapped_column(String(40))
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    unit: Mapped[str | None] = mapped_column(String(40))
+    raw_payload_json: Mapped[str | None] = mapped_column(Text)
+    import_status: Mapped[str] = mapped_column(String(40), default="imported")
+    classification_error: Mapped[str | None] = mapped_column(Text)
+
+
+class EventClassificationORM(Base):
+    """Local interpretation of an imported operational event.
+
+    Populated by the classification engine (later phase). Created here so the
+    ingestion foundation and the schema move together.
+    """
+
+    __tablename__ = "event_classifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    imported_event_id: Mapped[int] = mapped_column(
+        ForeignKey("imported_operational_events.id"), nullable=False
+    )
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"))
+    service_code: Mapped[str | None] = mapped_column(String(80))
+    usage_event_type: Mapped[str | None] = mapped_column(String(120))
+    classification: Mapped[str | None] = mapped_column(String(40))
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    unit: Mapped[str | None] = mapped_column(String(40))
+    is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_cost_relevant: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_client_visible: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_internal_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification_reason: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+
+
+class EventImportCursorORM(Base):
+    """Idempotent synchronization state per source system."""
+
+    __tablename__ = "event_import_cursors"
+
+    source_system: Mapped[str] = mapped_column(String(80), primary_key=True)
+    cursor: Mapped[str | None] = mapped_column(String(400))
+    last_occurred_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_successful_sync_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(20), default="ok")
+    error_message: Mapped[str | None] = mapped_column(Text)
