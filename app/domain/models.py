@@ -76,7 +76,6 @@ class CostItem(BaseModel):
     unit_cost: Decimal = Field(default=Decimal("0"), ge=0)
     unit: str
     billing_frequency: Literal["monthly", "annual", "usage", "once"]
-    charge_day: int | None = Field(default=None, ge=1, le=31)
     start_date: date | None = None
     end_date: date | None = None
     currency: str = "MXN"

@@ -15,8 +15,22 @@ NAV_ITEMS = [
 def app_layout() -> html.Div:
     sidebar = html.Nav(
         [
-            html.Div("Valteh", className="h4 mb-0"),
-            html.Div("Economics Dashboard", className="text-muted small mb-4"),
+            html.Div(
+                [
+                    html.Img(
+                        src="/assets/valteh_logo_Blue_Vertical.png",
+                        alt="Valteh logo",
+                        className="brand-logo",
+                    ),
+                    html.Div(
+                        [
+                            html.Div("Valteh", className="h4 mb-0"),
+                            html.Div("Economics Dashboard", className="text-muted small"),
+                        ]
+                    ),
+                ],
+                className="brand-header mb-4",
+            ),
             dbc.Nav(
                 [dbc.NavLink(label, href=href, active="exact") for label, href in NAV_ITEMS],
                 vertical=True,

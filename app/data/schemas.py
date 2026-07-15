@@ -101,7 +101,6 @@ class CostItemORM(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     unit: Mapped[str] = mapped_column(String(80), nullable=False)
     billing_frequency: Mapped[str] = mapped_column(String(40), nullable=False)
-    charge_day: Mapped[int | None] = mapped_column()
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
     currency: Mapped[str] = mapped_column(String(3), default="MXN")
@@ -181,9 +180,7 @@ class EventClassificationORM(Base):
     __tablename__ = "event_classifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    imported_event_id: Mapped[int] = mapped_column(
-        ForeignKey("imported_operational_events.id"), nullable=False
-    )
+    imported_event_id: Mapped[int] = mapped_column(ForeignKey("imported_operational_events.id"), nullable=False)
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"))
     service_code: Mapped[str | None] = mapped_column(String(80))
     usage_event_type: Mapped[str | None] = mapped_column(String(120))

@@ -12,6 +12,7 @@ from app.utils.currency import format_mxn
 def layout():
     repo = SeedRepository()
     clients = repo.clients()
+    default_client_id = _default_client_id(repo, clients)
     return html.Div(
         [
             html.H1("Client Detail", className="h3"),
@@ -24,7 +25,7 @@ def layout():
                             dcc.Dropdown(
                                 id="client-detail-client-filter",
                                 options=[{"label": client.name, "value": client.id} for client in clients],
-                                value=clients[0].id,
+                                value=default_client_id,
                                 clearable=False,
                             ),
                         ],
@@ -33,7 +34,7 @@ def layout():
                 ],
                 className="mb-4",
             ),
-            html.Div(id="client-detail-content", children=_client_detail_content(clients[0].id)),
+            html.Div(id="client-detail-content", children=_client_detail_content(default_client_id)),
         ]
     )
 
@@ -51,13 +52,13 @@ def _client_detail_content(client_id: int):
     repo = SeedRepository()
     client = next(client for client in repo.clients() if client.id == client_id)
     months = repo.available_months()
-    detail_month = months[-1]
+    detail_month = _latest_client_month(repo, client.id, months)
     usage = repo.usage_for_client_month(client.id, detail_month)
     service_usage = {}
     service_cost = {}
     service_revenue = {}
-    rates = repo.cost_rates()
-    plan = repo.active_plan_for_client(client.id)
+    rates = repo.cost_rates(pd.Timestamp(f"{detail_month}-01").date())
+    plan = repo.active_plan_for_client_month(client.id, detail_month)
     for event in usage:
         service_usage[event.service_code] = service_usage.get(event.service_code, 0) + float(event.quantity)
         service_cost[event.service_code] = service_cost.get(event.service_code, 0) + float(event.quantity) * float(
@@ -135,6 +136,23 @@ def _event_price(event_type: str, plan) -> float:
         "blockchain.folio_mint": plan.price_per_property_mint,
     }
     return float(price_map.get(event_type, 0))
+
+
+def _default_client_id(repo: SeedRepository, clients) -> int:
+    latest_month = repo.available_months()[-1]
+    active_clients = repo.active_clients(latest_month)
+    if active_clients:
+        return active_clients[0].id
+    return clients[0].id
+
+
+def _latest_client_month(repo: SeedRepository, client_id: int, months: list[str]) -> str:
+    for month in reversed(months):
+        if repo.active_subscription_for_client_month(client_id, month) is not None:
+            return month
+        if repo.usage_for_client_month(client_id, month):
+            return month
+    return months[-1]
 
 
 def _client_operating_margin(repo: SeedRepository, client_id: int, month: str) -> float:

@@ -14,6 +14,7 @@ from app.utils.currency import format_mxn, format_percent
 
 
 def layout():
+    latest_month = SeedRepository().available_months()[-1]
     return html.Div(
         [
             html.Div(
@@ -22,8 +23,8 @@ def layout():
                     html.P("Monthly economics overview", className="text-muted"),
                 ]
             ),
-            dbc.Row([month_filter("executive-month-filter", "2026-06")], className="mb-3"),
-            html.Div(id="executive-dashboard-content", children=_dashboard_content("2026-06")),
+            dbc.Row([month_filter("executive-month-filter", latest_month)], className="mb-3"),
+            html.Div(id="executive-dashboard-content", children=_dashboard_content(latest_month)),
         ]
     )
 

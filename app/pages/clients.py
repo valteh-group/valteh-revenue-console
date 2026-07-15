@@ -11,7 +11,7 @@ from app.utils.currency import format_mxn, format_percent
 
 def layout():
     repo = SeedRepository()
-    month = "2026-06"
+    month = repo.available_months()[-1]
     rows = []
     active_clients = repo.active_clients(month)
     fixed_cost = repo.monthly_summary(month)["fixed_cost"]

@@ -1,16 +1,17 @@
-﻿id,cost_key,name,provider,category,service_line,cost_type,charge_basis,quantity,unit_cost,unit,billing_frequency,charge_day,start_date,end_date,currency,record_type,enabled,notes
-1,infrastructure.hetzner.cx41,Hetzner CX41 pilot server,Hetzner,Infrastructure,Shared,fixed,flat,1,370,month,monthly,,2026-04-01,,MXN,actual,TRUE,Pilot server
-2,software.microsoft365.team,Microsoft 365 team subscription,Microsoft,Software,Shared,fixed,per_user,2,200,user-month,monthly,,2026-05-01,2026-06-30,MXN,actual,TRUE,Original two-user subscription rate
-15,software.microsoft365.team,Microsoft 365 team subscription,Microsoft,Software,Shared,fixed,per_user,3,220,user-month,monthly,,2026-07-01,,MXN,actual,TRUE,July price increase and one additional user
-3,software.valteh_domain_purchase,valteh.com domain purchase,Domain registrar,Software,Shared,one_time,flat,1,1000,payment,once,15,2026-05-15,2026-05-15,MXN,actual,TRUE,Initial domain purchase
-4,ai.claude.document_analysis,Claude document analysis,Anthropic,AI,SAREMI,variable,usage,1,1,saremi.document_validation,usage,,2026-04-01,,MXN,actual,TRUE,Variable rate per document validation
-5,ai.local.document_preprocessing,Local document preprocessing,,AI,SAREMI,variable,usage,1,0.05,saremi.document_validation,usage,,2026-04-01,,MXN,actual,TRUE,Local preprocessing component
-6,operations.id_validation,ID validation workflow,,Operations,SAREMI,variable,usage,1,0.1,saremi.ine_validation,usage,,2026-04-01,,MXN,actual,TRUE,Variable validation rate
-7,compute.graphos.query,Graphos local query compute,,Compute,Graphos,variable,usage,1,0.02,graphos.query,usage,,2026-04-01,,MXN,actual,TRUE,Local query compute
-8,compute.graphos.case_analysis,Graphos case analysis compute,,Compute,Graphos,variable,usage,1,0.1,graphos.case_analysis,usage,,2026-04-01,,MXN,actual,TRUE,Case analysis compute
-9,blockchain.audit_anchor,Local blockchain audit anchor,,Blockchain,Blockchain / BaaS,variable,usage,1,0.01,blockchain.asiento_registration,usage,,2026-04-01,,MXN,actual,TRUE,Internal audit anchor
-10,blockchain.folio_placeholder,Local blockchain folio placeholder,,Blockchain,Blockchain / BaaS,variable,usage,1,0.02,blockchain.folio_mint,usage,,2026-04-01,,MXN,actual,TRUE,Local folio placeholder
-11,benchmark.aws_baas_pilot,AWS BaaS pilot infrastructure benchmark,AWS,Infrastructure,Blockchain / BaaS,fixed,flat,1,5100,month,monthly,,2026-04-01,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
-12,benchmark.aws_baas_production,AWS BaaS production infrastructure benchmark,AWS,Infrastructure,Blockchain / BaaS,fixed,flat,1,15300,month,monthly,,2026-04-01,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
-13,benchmark.blockchain_devops,Blockchain DevOps engineer benchmark,,People,Blockchain / BaaS,fixed,flat,1,45000,month,monthly,,2026-04-01,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
-14,benchmark.administration,Administrative and accounting benchmark,,Operations,Shared,fixed,flat,1,8000,month,monthly,,2026-04-01,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
+﻿id,cost_key,name,provider,category,service_line,cost_type,charge_basis,quantity,unit_cost,unit,billing_frequency,start_date,end_date,currency,record_type,enabled,notes
+1,infrastructure.hetzner.cx41,Hetzner CX41 pilot server,Hetzner,Infrastructure,Shared,fixed,flat,1,370,month,monthly,01/04/2026,,MXN,actual,TRUE,Pilot server
+2,software.microsoft365.team,Microsoft 365 team subscription,Microsoft,Software,Shared,fixed,per_user,4,6,user-month,monthly,01/05/2026,30/06/2026,USD,actual,TRUE,Original two-user subscription rate
+15,software.microsoft365.team,Microsoft 365 team subscription,Microsoft,Software,Shared,fixed,per_user,4,8,user-month,monthly,01/07/2026,,USD,actual,TRUE,July price increase and one additional user
+3,software.valteh_domain_purchase,valteh.com domain purchase,Domain registrar,Software,Shared,one_time,flat,1,1000,payment,once,15/05/2026,15/05/2026,MXN,actual,TRUE,Initial domain purchase
+16,software.claude.anthropic,Claude Anthropic Subscription,Anthropic,Software,Shared,fixed,flat,1,17,month,monthly,01/04/2026,,USD,actual,TRUE,Monthly base subscription
+4,ai.claude.document_analysis,Claude document analysis,Anthropic,AI,SAREMI,variable,usage,1,1,saremi.document_validation,usage,01/04/2026,,MXN,actual,TRUE,Variable rate per document validation
+5,ai.local.document_preprocessing,Local document preprocessing,,AI,SAREMI,variable,usage,1,0.05,saremi.document_validation,usage,01/04/2026,,MXN,actual,TRUE,Local preprocessing component
+6,operations.id_validation,ID validation workflow,,Operations,SAREMI,variable,usage,1,0.1,saremi.ine_validation,usage,01/04/2026,,MXN,actual,TRUE,Variable validation rate
+7,compute.graphos.query,Graphos local query compute,,Compute,Graphos,variable,usage,1,0.02,graphos.query,usage,01/04/2026,,MXN,actual,TRUE,Local query compute
+8,compute.graphos.case_analysis,Graphos case analysis compute,,Compute,Graphos,variable,usage,1,0.1,graphos.case_analysis,usage,01/04/2026,,MXN,actual,TRUE,Case analysis compute
+9,blockchain.audit_anchor,Local blockchain audit anchor,,Blockchain,Blockchain / BaaS,variable,usage,1,0.01,blockchain.asiento_registration,usage,01/04/2026,,MXN,actual,TRUE,Internal audit anchor
+10,blockchain.folio_placeholder,Local blockchain folio placeholder,,Blockchain,Blockchain / BaaS,variable,usage,1,0.02,blockchain.folio_mint,usage,01/04/2026,,MXN,actual,TRUE,Local folio placeholder
+11,benchmark.aws_baas_pilot,AWS BaaS pilot infrastructure benchmark,AWS,Infrastructure,Blockchain / BaaS,fixed,flat,1,5100,month,monthly,01/04/2026,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
+12,benchmark.aws_baas_production,AWS BaaS production infrastructure benchmark,AWS,Infrastructure,Blockchain / BaaS,fixed,flat,1,15300,month,monthly,01/04/2026,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
+13,benchmark.blockchain_devops,Blockchain DevOps engineer benchmark,,People,Blockchain / BaaS,fixed,flat,1,45000,month,monthly,01/04/2026,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations
+14,benchmark.administration,Administrative and accounting benchmark,,Operations,Shared,fixed,flat,1,8000,month,monthly,01/04/2026,,MXN,estimate,TRUE,Future-state benchmark; excluded from actual calculations

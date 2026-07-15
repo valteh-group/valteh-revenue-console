@@ -29,7 +29,6 @@ def _seed_record(**overrides) -> pd.Series:
         "unit_cost": "200",
         "unit": "user-month",
         "billing_frequency": "monthly",
-        "charge_day": "",
         "start_date": "2026-05-01",
         "end_date": "2026-06-30",
         "currency": "MXN",
@@ -44,11 +43,13 @@ def _seed_record(**overrides) -> pd.Series:
 def test_loads_new_cost_seed_schema() -> None:
     items = SeedRepository().cost_items()
 
-    assert len(items) == 15
+    assert len(items) == 16
     microsoft_versions = [item for item in items if item.cost_key == "software.microsoft365.team"]
     assert [item.id for item in microsoft_versions] == [2, 15]
-    assert microsoft_versions[0].quantity == Decimal("2")
-    assert microsoft_versions[1].unit_cost == Decimal("220")
+    assert microsoft_versions[0].quantity == Decimal("4")
+    assert microsoft_versions[0].unit_cost == Decimal("108")
+    assert microsoft_versions[1].unit_cost == Decimal("144")
+    assert all(item.currency == "MXN" for item in microsoft_versions)
 
 
 def test_boolean_parsing_accepts_csv_true_false_values() -> None:
@@ -66,6 +67,13 @@ def test_date_parsing_accepts_iso_dates() -> None:
 
     assert record["start_date"] == date(2026, 7, 1)
     assert record["end_date"] is None
+
+
+def test_date_parsing_accepts_day_first_dates() -> None:
+    record = _normalize_cost_record(_seed_record(start_date="01/07/2026", end_date="31/07/2026"), row_number=2)
+
+    assert record["start_date"] == date(2026, 7, 1)
+    assert record["end_date"] == date(2026, 7, 31)
 
 
 def test_date_parsing_rejects_invalid_dates() -> None:
@@ -88,6 +96,18 @@ def test_negative_unit_cost_is_rejected() -> None:
         _normalize_cost_record(_seed_record(unit_cost="-1"), row_number=2)
 
 
+def test_usd_unit_cost_is_converted_to_mxn() -> None:
+    record = _normalize_cost_record(_seed_record(unit_cost="6", currency="USD"), row_number=2)
+
+    assert record["unit_cost"] == Decimal("108")
+    assert record["currency"] == "MXN"
+
+
+def test_unsupported_currency_is_rejected() -> None:
+    with pytest.raises(ValueError, match="currency.*unsupported value"):
+        _normalize_cost_record(_seed_record(currency="EUR"), row_number=2)
+
+
 def test_duplicate_record_ids_are_rejected() -> None:
     records = [
         _normalize_cost_record(_seed_record(id="1"), row_number=2),
@@ -106,20 +126,26 @@ def test_missing_cost_key_is_rejected() -> None:
 def test_microsoft_seed_history_uses_may_june_and_july_versions() -> None:
     microsoft_versions = SeedRepository().cost_versions("software.microsoft365.team")
 
-    assert calculate_fixed_costs(microsoft_versions, date(2026, 5, 1)) == Decimal("400")
-    assert calculate_fixed_costs(microsoft_versions, date(2026, 6, 1)) == Decimal("400")
-    assert calculate_fixed_costs(microsoft_versions, date(2026, 7, 1)) == Decimal("660")
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 5, 1)) == Decimal("432")
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 6, 1)) == Decimal("432")
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 7, 1)) == Decimal("576")
 
 
 def test_dashboard_service_functions_use_monthly_cost_totals() -> None:
     repo = SeedRepository()
     summary = repo.monthly_summary("2026-06")
 
-    assert summary["fixed_cost"] == Decimal("770")
+    assert summary["fixed_cost"] == Decimal("1108")
     assert summary["variable_cost"] == Decimal("1917.18")
-    assert repo.cost_by_service("2026-06")["Shared"] == Decimal("770")
-    assert repo.cost_by_category("2026-06")["Software"] == Decimal("400")
-    assert repo.cost_by_provider("2026-06")["Microsoft"] == Decimal("400")
+    assert repo.cost_by_service("2026-06")["Shared"] == Decimal("1108")
+    assert repo.cost_by_category("2026-06")["Software"] == Decimal("738")
+    assert repo.cost_by_provider("2026-06")["Microsoft"] == Decimal("432")
+
+
+def test_available_months_run_from_first_cost_month_to_current_month(monkeypatch) -> None:
+    monkeypatch.setattr("app.data.repositories.current_month_key", lambda: "2026-07")
+
+    assert SeedRepository().available_months() == ["2026-04", "2026-05", "2026-06", "2026-07"]
 
 
 def test_seed_database_is_idempotent_schema_initialization(monkeypatch) -> None:

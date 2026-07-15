@@ -119,10 +119,13 @@ When a cost changes, do not edit the historical amount in place:
 2. Add a row with a new unique `id`, the same `cost_key`, the new `start_date`, quantity, and unit cost.
 3. Leave `end_date` empty while the new version remains in force.
 
-Use `quantity` and `unit_cost` separately (for example, 3 users x 220 MXN), and use `charge_day` when the
-provider has a known recurring collection day. `record_type=actual` participates in reported costs;
+Use `quantity` and `unit_cost` separately (for example, 4 users x 8 USD). `record_type=actual` participates in reported costs;
 `budget` and `estimate` remain visible but are excluded from actual margins. Set `end_date` when a cost
 ceases to exist. `enabled` is an operational kill switch and should not replace lifecycle dates.
+
+Costs are reported in MXN. Seed rows can currently be entered in `MXN` or `USD`; USD rows are converted to MXN
+with the temporary flat rate `1 USD = 18 MXN`. Later FX history can replace this static conversion in the
+currency utility without changing ordinary seed rows.
 
 Effective dates are resolved for each requested accounting month. A row is active when `enabled=TRUE`,
 `start_date` is on or before the requested period, and `end_date` is blank or still covers that period.
@@ -131,13 +134,13 @@ Overlapping `actual` rows for the same `cost_key` are rejected so a versioned co
 Microsoft subscription example:
 
 ```csv
-id,cost_key,quantity,unit_cost,start_date,end_date
-2,software.microsoft365.team,2,200,2026-05-01,2026-06-30
-15,software.microsoft365.team,3,220,2026-07-01,
+id,cost_key,quantity,unit_cost,currency,start_date,end_date
+2,software.microsoft365.team,4,6,USD,2026-05-01,2026-06-30
+15,software.microsoft365.team,4,8,USD,2026-07-01,
 ```
 
-With this history, May 2026 and June 2026 use `2 x 200 = 400 MXN`. July 2026 onward uses
-`3 x 220 = 660 MXN`. Historical months stay unchanged because the old row is ended instead of overwritten.
+With this history, May 2026 and June 2026 use `4 x 6 USD x 18 = 432 MXN`. July 2026 onward uses
+`4 x 8 USD x 18 = 576 MXN`. Historical months stay unchanged because the old row is ended instead of overwritten.
 
 To add users to a per-user subscription, end the old row and add a new row with the same `cost_key`, updated
 `quantity`, and the date the new user count starts. To add a new fixed cost, use `cost_type=fixed`,
