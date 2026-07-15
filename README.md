@@ -108,8 +108,10 @@ Pilot assumptions are based on:
 
 ### Maintain cost history
 
-`seed_costs.csv` is an effective-dated catalog. Each row is one version of a cost; `cost_key` identifies the
-same underlying service or contract across versions.
+`data/seed_costs.csv` is the cost catalog used by the economic dashboard. It stores actual, budget, and
+estimate cost records for fixed subscriptions, one-time purchases, and usage-based rates. Each row is one
+version of a cost. The numeric `id` identifies that specific row, while `cost_key` is the stable business
+identifier for the underlying cost concept across versions.
 
 When a cost changes, do not edit the historical amount in place:
 
@@ -121,6 +123,47 @@ Use `quantity` and `unit_cost` separately (for example, 3 users x 220 MXN), and 
 provider has a known recurring collection day. `record_type=actual` participates in reported costs;
 `budget` and `estimate` remain visible but are excluded from actual margins. Set `end_date` when a cost
 ceases to exist. `enabled` is an operational kill switch and should not replace lifecycle dates.
+
+Effective dates are resolved for each requested accounting month. A row is active when `enabled=TRUE`,
+`start_date` is on or before the requested period, and `end_date` is blank or still covers that period.
+Overlapping `actual` rows for the same `cost_key` are rejected so a versioned cost cannot be double-counted.
+
+Microsoft subscription example:
+
+```csv
+id,cost_key,quantity,unit_cost,start_date,end_date
+2,software.microsoft365.team,2,200,2026-05-01,2026-06-30
+15,software.microsoft365.team,3,220,2026-07-01,
+```
+
+With this history, May 2026 and June 2026 use `2 x 200 = 400 MXN`. July 2026 onward uses
+`3 x 220 = 660 MXN`. Historical months stay unchanged because the old row is ended instead of overwritten.
+
+To add users to a per-user subscription, end the old row and add a new row with the same `cost_key`, updated
+`quantity`, and the date the new user count starts. To add a new fixed cost, use `cost_type=fixed`,
+`charge_basis=flat` or `per_user`, `billing_frequency=monthly`, and the appropriate `service_line`,
+`provider`, and `category`. To add a usage-based cost, use `cost_type=variable`, `charge_basis=usage`,
+`billing_frequency=usage`, and set `unit` to the usage event type that should consume the rate.
+
+Usage-based costs are mapped by `unit`: for example, a cost row with `unit=saremi.document_validation` applies
+to usage events whose `event_type` is `saremi.document_validation`. The same event type can have multiple
+cost components with different `cost_key` values, such as an external AI rate plus local preprocessing.
+
+To disable or end a cost, prefer setting `end_date` when the cost lifecycle is known. Use `enabled=FALSE`
+only when the row should be excluded operationally without changing its historical dates.
+
+The CSV-backed app reads seed files at runtime. The schema initialization helper is idempotent and can be run
+with:
+
+```bash
+python -c "from app.data.seed_data import seed_database; seed_database()"
+```
+
+Run tests with:
+
+```bash
+pytest
+```
 
 The repository layer in `app/data/repositories.py` exposes this data to the UI and domain logic. `app/data/database.py` and `app/data/schemas.py` define the SQLAlchemy foundation for moving from CSV-backed local data to SQLite or PostgreSQL persistence.
 

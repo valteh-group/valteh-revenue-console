@@ -1,11 +1,67 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from app.domain.models import CostItem, UsageEvent
 from app.domain.unit_economics import money
+
+
+@dataclass(frozen=True)
+class CostAmount:
+    cost_key: str
+    name: str
+    provider: str | None
+    category: str
+    service_line: str
+    cost_type: str
+    charge_basis: str
+    quantity: Decimal
+    unit_cost: Decimal
+    unit: str
+    billing_frequency: str
+    start_date: date | None
+    end_date: date | None
+    record_type: str
+    amount: Decimal
+
+
+class CostOverlapError(ValueError):
+    """Raised when two enabled versions of the same cost key apply to one period."""
+
+
+def resolve_effective_cost_items(
+    cost_items: Iterable[CostItem],
+    when: date | datetime,
+    *,
+    record_type: str = "actual",
+    cost_types: set[str] | None = None,
+    month_scope: bool = False,
+) -> list[CostItem]:
+    """Return the single applicable version for each cost key at a date or month.
+
+    Multiple different cost keys can map to the same usage unit. Multiple enabled
+    versions of one cost key in the same period are rejected to avoid double-counting.
+    """
+
+    applicable_by_key: dict[str, list[CostItem]] = {}
+    for item in cost_items:
+        if item.record_type != record_type:
+            continue
+        if cost_types is not None and item.cost_type not in cost_types:
+            continue
+        if is_cost_effective(item, when, month_scope=month_scope):
+            applicable_by_key.setdefault(item.cost_key, []).append(item)
+
+    resolved: list[CostItem] = []
+    for cost_key, versions in applicable_by_key.items():
+        if len(versions) > 1:
+            version_ids = ", ".join(str(item.id) for item in sorted(versions, key=lambda item: item.id))
+            raise CostOverlapError(f"Overlapping effective cost records for cost_key '{cost_key}': ids {version_ids}")
+        resolved.extend(versions)
+    return resolved
 
 
 def calculate_variable_cost(
@@ -27,15 +83,52 @@ def calculate_fixed_costs(cost_items: Iterable[CostItem], month: date | None = N
     return sum(
         (
             _fixed_cost_for_month(item, month)
-            for item in cost_items
-            if item.cost_type in {"fixed", "one_time"}
+            for item in resolve_effective_cost_items(
+                cost_items,
+                month,
+                cost_types={"fixed", "one_time"},
+                month_scope=True,
+            )
         ),
         Decimal("0"),
     )
 
 
+def monthly_cost_amounts(
+    cost_items: Iterable[CostItem],
+    month: date,
+    usage_events: Iterable[UsageEvent] = (),
+) -> list[CostAmount]:
+    """Calculate actual monthly costs from the catalog and usage events."""
+
+    items = list(cost_items)
+    amounts: list[CostAmount] = []
+    for item in resolve_effective_cost_items(items, month, cost_types={"fixed", "one_time"}, month_scope=True):
+        amount = _fixed_cost_for_month(item, month)
+        if amount:
+            amounts.append(_cost_amount(item, amount))
+
+    variable_by_item: dict[int, Decimal] = {}
+    events = list(usage_events)
+    for event in events:
+        for item in resolve_effective_cost_items(
+            items,
+            event.event_timestamp,
+            cost_types={"variable"},
+        ):
+            if item.unit == event.event_type:
+                variable_by_item[item.id] = variable_by_item.get(item.id, Decimal("0")) + (
+                    money(event.quantity) * money(item.unit_cost)
+                )
+
+    items_by_id = {item.id: item for item in items}
+    for item_id, amount in variable_by_item.items():
+        amounts.append(_cost_amount(items_by_id[item_id], amount))
+    return amounts
+
+
 def _fixed_cost_for_month(item: CostItem, month: date) -> Decimal:
-    if not is_cost_effective(item, month, month_scope=True):
+    if item.record_type != "actual" or not is_cost_effective(item, month, month_scope=True):
         return Decimal("0")
     if item.cost_type == "fixed":
         if item.billing_frequency == "monthly":
@@ -89,8 +182,27 @@ def _normalize_rates(
     if isinstance(cost_rates, Mapping):
         return {key: money(value) for key, value in cost_rates.items()}
     rates: dict[str, Decimal] = {}
-    for item in cost_rates:
-        if item.cost_type == "variable" and is_cost_effective(item, when):
-            key = item.unit
-            rates[key] = rates.get(key, Decimal("0")) + money(item.unit_cost)
+    for item in resolve_effective_cost_items(cost_rates, when, cost_types={"variable"}):
+        key = item.unit
+        rates[key] = rates.get(key, Decimal("0")) + money(item.unit_cost)
     return rates
+
+
+def _cost_amount(item: CostItem, amount: Decimal) -> CostAmount:
+    return CostAmount(
+        cost_key=item.cost_key,
+        name=item.name,
+        provider=item.provider,
+        category=item.category,
+        service_line=item.service_line or "Shared",
+        cost_type=item.cost_type,
+        charge_basis=item.charge_basis,
+        quantity=item.quantity,
+        unit_cost=item.unit_cost,
+        unit=item.unit,
+        billing_frequency=item.billing_frequency,
+        start_date=item.start_date,
+        end_date=item.end_date,
+        record_type=item.record_type,
+        amount=money(amount),
+    )

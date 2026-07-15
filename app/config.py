@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,6 +36,13 @@ class Settings(BaseSettings):
     events_sync_page_size: int = Field(default=200, description="Max events requested per export page.")
 
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", env_file_encoding="utf-8")
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: Any) -> Any:
+        if isinstance(value, str) and value.strip().lower() in {"release", "production", "prod"}:
+            return False
+        return value
 
     def event_sources(self) -> list["SourceConfig"]:
         """Return the configured (non-empty) operational-event sources."""

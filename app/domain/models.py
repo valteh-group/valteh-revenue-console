@@ -71,7 +71,7 @@ class CostItem(BaseModel):
     category: str
     service_line: str | None = None
     cost_type: Literal["fixed", "variable", "one_time"]
-    charge_basis: str
+    charge_basis: Literal["flat", "per_user", "usage"]
     quantity: Decimal = Field(default=Decimal("1"), ge=0)
     unit_cost: Decimal = Field(default=Decimal("0"), ge=0)
     unit: str

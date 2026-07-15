@@ -1,8 +1,10 @@
 from datetime import date
 
 import dash_bootstrap_components as dbc
-from dash import html
+import pandas as pd
+from dash import dcc, html
 
+from app.components.charts import bar_chart, line_chart
 from app.components.tables import data_table
 from app.data.repositories import SeedRepository
 from app.domain.cost_engine import calculate_fixed_costs, is_cost_effective
@@ -12,11 +14,10 @@ from app.utils.currency import format_mxn
 def layout():
     repo = SeedRepository()
     items = repo.cost_items()
+    selected_month = repo.available_months()[-1]
     today = date.today()
     current_items = [item for item in items if is_cost_effective(item, today)]
-    current_fixed = calculate_fixed_costs(
-        [item for item in items if item.cost_type == "fixed"], today.replace(day=1)
-    )
+    current_fixed = calculate_fixed_costs([item for item in items if item.cost_type == "fixed"], today.replace(day=1))
     rows = [
         {
             "cost_key": item.cost_key,
@@ -39,6 +40,24 @@ def layout():
         }
         for item in items
     ]
+    monthly_rows = [
+        {
+            "cost_key": cost.cost_key,
+            "name": cost.name,
+            "provider": cost.provider or "",
+            "category": cost.category,
+            "service_line": cost.service_line,
+            "cost_type": cost.cost_type,
+            "quantity": f"{cost.quantity:f}",
+            "unit_cost": f"{float(cost.unit_cost):,.4f}",
+            "unit": cost.unit,
+            "amount": format_mxn(cost.amount),
+            "start_date": cost.start_date.isoformat() if cost.start_date else "",
+            "end_date": cost.end_date.isoformat() if cost.end_date else "",
+        }
+        for cost in repo.monthly_cost_amounts(selected_month)
+    ]
+    history = pd.DataFrame(repo.cost_history())
     return html.Div(
         [
             html.H1("Costs", className="h3"),
@@ -54,9 +73,7 @@ def layout():
                     ),
                     dbc.Col(
                         dbc.Card(
-                            dbc.CardBody(
-                                [html.Small("Current monthly fixed cost"), html.H3(format_mxn(current_fixed))]
-                            )
+                            dbc.CardBody([html.Small("Current monthly fixed cost"), html.H3(format_mxn(current_fixed))])
                         ),
                         md=4,
                     ),
@@ -82,6 +99,34 @@ def layout():
                 ],
                 color="info",
             ),
+            html.H2(f"Realized Costs for {selected_month}", className="h5"),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dcc.Graph(figure=bar_chart(repo.cost_by_service(selected_month), "Costs by Service Line")),
+                        md=4,
+                    ),
+                    dbc.Col(
+                        dcc.Graph(figure=bar_chart(repo.cost_by_provider(selected_month), "Costs by Provider")),
+                        md=4,
+                    ),
+                    dbc.Col(
+                        dcc.Graph(figure=bar_chart(repo.cost_by_category(selected_month), "Costs by Category")),
+                        md=4,
+                    ),
+                ],
+                className="mb-3",
+            ),
+            dbc.Card(
+                dbc.CardBody(data_table("monthly-costs-table", monthly_rows, 10)),
+                className="border-0 shadow-sm mb-4",
+            ),
+            html.H2("Cost History", className="h5"),
+            dbc.Card(
+                dbc.CardBody(dcc.Graph(figure=line_chart(history, "month", "total", "Total Cost History"))),
+                className="border-0 shadow-sm mb-4",
+            ),
+            html.H2("Catalog Versions", className="h5"),
             dbc.Card(dbc.CardBody(data_table("costs-table", rows, 15)), className="border-0 shadow-sm"),
         ]
     )
