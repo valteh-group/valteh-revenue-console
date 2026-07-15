@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import dash_bootstrap_components as dbc
+import pandas as pd
 from dash import Input, Output, State, dcc, html
 
 from app.components.charts import bar_chart, pie_chart
@@ -49,11 +50,16 @@ def _dashboard_content(month: str):
     summary = repo.monthly_summary(month)
     revenue_by_service = repo.revenue_by_service(month)
     cost_by_service = repo.cost_by_service(month)
+    cost_by_provider = repo.cost_by_provider(month)
+    cost_by_category = repo.cost_by_category(month)
     variable_cost = summary["variable_cost"]
     revenue = summary["revenue"]
     operating_margin_pct = (summary["operating_margin"] / revenue) if revenue else Decimal("0")
     unit_price = _average_document_price(repo, month)
-    unit_variable_cost = repo.cost_rates().get("saremi.document_validation", Decimal("0"))
+    unit_variable_cost = repo.cost_rates(pd.Timestamp(f"{month}-01").date()).get(
+        "saremi.document_validation",
+        Decimal("0"),
+    )
     break_even_usage = calculate_break_even_usage(summary["fixed_cost"], unit_price, unit_variable_cost)
     client_rows = _client_rows(repo, month)
     lowest_margin_rows = sorted(client_rows, key=lambda row: row["operating_margin_percentage"])[:5]
@@ -148,6 +154,13 @@ def _dashboard_content(month: str):
                         ),
                         md=4,
                     ),
+                ],
+                className="mb-4",
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(dcc.Graph(figure=bar_chart(cost_by_provider, "Costs by Provider")), md=6),
+                    dbc.Col(dcc.Graph(figure=bar_chart(cost_by_category, "Costs by Category")), md=6),
                 ],
                 className="mb-4",
             ),

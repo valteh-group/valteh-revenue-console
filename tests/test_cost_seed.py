@@ -1,0 +1,136 @@
+from datetime import date
+from decimal import Decimal
+
+import pandas as pd
+import pytest
+
+from app.data.repositories import (
+    REQUIRED_COST_COLUMNS,
+    SeedRepository,
+    _normalize_cost_record,
+    _parse_bool,
+    _validate_duplicate_cost_ids,
+)
+from app.data.seed_data import seed_database
+from app.domain.cost_engine import calculate_fixed_costs
+
+
+def _seed_record(**overrides) -> pd.Series:
+    values = {
+        "id": "1",
+        "cost_key": "software.microsoft365.team",
+        "name": "Microsoft 365 team subscription",
+        "provider": "Microsoft",
+        "category": "Software",
+        "service_line": "Shared",
+        "cost_type": "fixed",
+        "charge_basis": "per_user",
+        "quantity": "2",
+        "unit_cost": "200",
+        "unit": "user-month",
+        "billing_frequency": "monthly",
+        "charge_day": "",
+        "start_date": "2026-05-01",
+        "end_date": "2026-06-30",
+        "currency": "MXN",
+        "record_type": "actual",
+        "enabled": "TRUE",
+        "notes": "Original rate",
+    }
+    values.update(overrides)
+    return pd.Series({column: values[column] for column in REQUIRED_COST_COLUMNS})
+
+
+def test_loads_new_cost_seed_schema() -> None:
+    items = SeedRepository().cost_items()
+
+    assert len(items) == 15
+    microsoft_versions = [item for item in items if item.cost_key == "software.microsoft365.team"]
+    assert [item.id for item in microsoft_versions] == [2, 15]
+    assert microsoft_versions[0].quantity == Decimal("2")
+    assert microsoft_versions[1].unit_cost == Decimal("220")
+
+
+def test_boolean_parsing_accepts_csv_true_false_values() -> None:
+    assert _parse_bool("TRUE", row_number=2, column="enabled") is True
+    assert _parse_bool("FALSE", row_number=2, column="enabled") is False
+
+
+def test_boolean_parsing_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="must be a Boolean"):
+        _parse_bool("maybe", row_number=2, column="enabled")
+
+
+def test_date_parsing_accepts_iso_dates() -> None:
+    record = _normalize_cost_record(_seed_record(start_date="2026-07-01", end_date=""), row_number=2)
+
+    assert record["start_date"] == date(2026, 7, 1)
+    assert record["end_date"] is None
+
+
+def test_date_parsing_rejects_invalid_dates() -> None:
+    with pytest.raises(ValueError, match="valid date"):
+        _normalize_cost_record(_seed_record(start_date="not-a-date"), row_number=2)
+
+
+def test_non_numeric_quantity_is_rejected() -> None:
+    with pytest.raises(ValueError, match="quantity.*numeric"):
+        _normalize_cost_record(_seed_record(quantity="many"), row_number=2)
+
+
+def test_unsupported_charge_basis_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unsupported value"):
+        _normalize_cost_record(_seed_record(charge_basis="per-seat"), row_number=2)
+
+
+def test_negative_unit_cost_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unit_cost.*cannot be negative"):
+        _normalize_cost_record(_seed_record(unit_cost="-1"), row_number=2)
+
+
+def test_duplicate_record_ids_are_rejected() -> None:
+    records = [
+        _normalize_cost_record(_seed_record(id="1"), row_number=2),
+        _normalize_cost_record(_seed_record(id="1", cost_key="software.other"), row_number=3),
+    ]
+
+    with pytest.raises(ValueError, match="duplicate cost record ids"):
+        _validate_duplicate_cost_ids(records)
+
+
+def test_missing_cost_key_is_rejected() -> None:
+    with pytest.raises(ValueError, match="cost_key.*required"):
+        _normalize_cost_record(_seed_record(cost_key=""), row_number=2)
+
+
+def test_microsoft_seed_history_uses_may_june_and_july_versions() -> None:
+    microsoft_versions = SeedRepository().cost_versions("software.microsoft365.team")
+
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 5, 1)) == Decimal("400")
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 6, 1)) == Decimal("400")
+    assert calculate_fixed_costs(microsoft_versions, date(2026, 7, 1)) == Decimal("660")
+
+
+def test_dashboard_service_functions_use_monthly_cost_totals() -> None:
+    repo = SeedRepository()
+    summary = repo.monthly_summary("2026-06")
+
+    assert summary["fixed_cost"] == Decimal("770")
+    assert summary["variable_cost"] == Decimal("1917.18")
+    assert repo.cost_by_service("2026-06")["Shared"] == Decimal("770")
+    assert repo.cost_by_category("2026-06")["Software"] == Decimal("400")
+    assert repo.cost_by_provider("2026-06")["Microsoft"] == Decimal("400")
+
+
+def test_seed_database_is_idempotent_schema_initialization(monkeypatch) -> None:
+    calls = []
+
+    def fake_init_db() -> None:
+        calls.append("init")
+
+    monkeypatch.setattr("app.data.seed_data.init_db", fake_init_db)
+
+    seed_database()
+    seed_database()
+
+    assert calls == ["init", "init"]

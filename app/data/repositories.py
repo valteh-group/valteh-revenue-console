@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
 
 from app.config import BASE_DIR, get_settings
-from app.domain.cost_engine import calculate_fixed_costs, calculate_variable_cost
+from app.domain.cost_engine import calculate_variable_cost, is_cost_effective, monthly_cost_amounts
 from app.domain.models import (
     Client,
     ClientProfitability,
@@ -25,6 +26,33 @@ from app.domain.revenue_engine import (
     calculate_usage_revenue,
 )
 from app.domain.unit_economics import calculate_gross_margin, calculate_gross_margin_percentage
+
+REQUIRED_COST_COLUMNS = {
+    "id",
+    "cost_key",
+    "name",
+    "provider",
+    "category",
+    "service_line",
+    "cost_type",
+    "charge_basis",
+    "quantity",
+    "unit_cost",
+    "unit",
+    "billing_frequency",
+    "charge_day",
+    "start_date",
+    "end_date",
+    "currency",
+    "record_type",
+    "enabled",
+    "notes",
+}
+
+SUPPORTED_COST_TYPES = {"fixed", "variable", "one_time"}
+SUPPORTED_CHARGE_BASES = {"flat", "per_user", "usage"}
+SUPPORTED_BILLING_FREQUENCIES = {"monthly", "annual", "usage", "once"}
+SUPPORTED_RECORD_TYPES = {"actual", "budget", "estimate"}
 
 
 @dataclass
@@ -101,15 +129,13 @@ class SeedRepository:
         return [UsageEvent(**record) for record in records]
 
     def cost_items(self) -> list[CostItem]:
-        df = pd.read_csv(self.data_path / "seed_costs.csv")
-        if "start_date" in df.columns:
-            df["start_date"] = _parse_dates(df["start_date"])
-        records = df.fillna("").to_dict("records")
-        normalized_records = []
-        for record in records:
-            record = _date_record(record, ["start_date"])
-            normalized_records.append(record)
-        return [CostItem(**record) for record in normalized_records]
+        df = pd.read_csv(self.data_path / "seed_costs.csv", dtype="string", keep_default_na=False)
+        _validate_required_cost_columns(df)
+        normalized_records = [_normalize_cost_record(record, row_number=index + 2) for index, record in df.iterrows()]
+        _validate_duplicate_cost_ids(normalized_records)
+        items = [CostItem(**record) for record in normalized_records]
+        _validate_cost_versions(items)
+        return items
 
     def revenue_events(self) -> list[RevenueEvent]:
         events: list[RevenueEvent] = []
@@ -197,12 +223,17 @@ class SeedRepository:
     def usage_for_client_month(self, client_id: int, month: str) -> list[UsageEvent]:
         return [event for event in self.usage_for_month(month) if event.client_id == client_id]
 
-    def cost_rates(self) -> dict[str, Decimal]:
+    def cost_rates(self, as_of: date | None = None) -> dict[str, Decimal]:
+        as_of = as_of or date.today()
         rates: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         for item in self.cost_items():
-            if item.active and item.cost_type == "variable":
-                rates[item.unit or item.name] += Decimal(str(item.unit_cost))
+            if item.cost_type == "variable" and is_cost_effective(item, as_of):
+                rates[item.unit] += Decimal(str(item.unit_cost))
         return dict(rates)
+
+    def monthly_cost_amounts(self, month: str):
+        period_month = pd.Timestamp(f"{month}-01").date()
+        return monthly_cost_amounts(self.cost_items(), period_month, self.usage_for_month(month))
 
     def client_profitability(self, client_id: int, month: str) -> ClientProfitability:
         usage = self.usage_for_client_month(client_id, month)
@@ -212,7 +243,7 @@ class SeedRepository:
         else:
             plan = next(plan for plan in self.pricing_plans() if plan.id == subscription.pricing_plan_id)
             revenue = calculate_client_revenue(usage, plan, subscription, pd.Timestamp(f"{month}-01").date())
-        variable_cost = calculate_variable_cost(usage, self.cost_rates())
+        variable_cost = calculate_variable_cost(usage, self.cost_items())
         return ClientProfitability(
             client_id=client_id,
             revenue=revenue,
@@ -246,13 +277,19 @@ class SeedRepository:
         return split
 
     def monthly_summary(self, month: str) -> dict[str, Decimal]:
-        usage = self.usage_for_month(month)
         revenue = sum(
             (self.client_profitability(client.id, month).revenue for client in self.active_clients(month)),
             Decimal("0"),
         )
-        variable_cost = calculate_variable_cost(usage, self.cost_rates())
-        fixed_cost = calculate_fixed_costs(self.cost_items(), pd.Timestamp(f"{month}-01").date())
+        cost_amounts = self.monthly_cost_amounts(month)
+        variable_cost = sum(
+            (cost.amount for cost in cost_amounts if cost.cost_type == "variable"),
+            Decimal("0"),
+        )
+        fixed_cost = sum(
+            (cost.amount for cost in cost_amounts if cost.cost_type in {"fixed", "one_time"}),
+            Decimal("0"),
+        )
         gross_margin = calculate_gross_margin(revenue, variable_cost)
         operating_margin = gross_margin - fixed_cost
         return {
@@ -283,11 +320,190 @@ class SeedRepository:
 
     def cost_by_service(self, month: str) -> dict[str, Decimal]:
         totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-        rates = self.cost_rates()
-        for event in self.usage_for_month(month):
-            service = _service_label(event.service_code)
-            totals[service] += Decimal(str(event.quantity)) * rates.get(event.event_type, Decimal("0"))
+        for cost in self.monthly_cost_amounts(month):
+            totals[cost.service_line] += cost.amount
         return dict(totals)
+
+    def cost_by_provider(self, month: str) -> dict[str, Decimal]:
+        totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for cost in self.monthly_cost_amounts(month):
+            totals[cost.provider or "Unassigned"] += cost.amount
+        return dict(totals)
+
+    def cost_by_category(self, month: str) -> dict[str, Decimal]:
+        totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for cost in self.monthly_cost_amounts(month):
+            totals[cost.category] += cost.amount
+        return dict(totals)
+
+    def cost_history(self) -> list[dict[str, Decimal | str]]:
+        rows = []
+        for month in self.available_months():
+            amounts = self.monthly_cost_amounts(month)
+            rows.append(
+                {
+                    "month": month,
+                    "fixed": sum((cost.amount for cost in amounts if cost.cost_type == "fixed"), Decimal("0")),
+                    "variable": sum((cost.amount for cost in amounts if cost.cost_type == "variable"), Decimal("0")),
+                    "one_time": sum((cost.amount for cost in amounts if cost.cost_type == "one_time"), Decimal("0")),
+                    "total": sum((cost.amount for cost in amounts), Decimal("0")),
+                }
+            )
+        return rows
+
+    def cost_versions(self, cost_key: str) -> list[CostItem]:
+        return sorted(
+            [item for item in self.cost_items() if item.cost_key == cost_key],
+            key=lambda item: (item.start_date or date.min, item.id),
+        )
+
+
+def _validate_required_cost_columns(df: pd.DataFrame) -> None:
+    missing = sorted(REQUIRED_COST_COLUMNS - set(df.columns))
+    if missing:
+        raise ValueError(f"seed_costs.csv is missing required columns: {', '.join(missing)}")
+
+
+def _validate_duplicate_cost_ids(records: list[dict]) -> None:
+    seen: set[int] = set()
+    duplicates: set[int] = set()
+    for record in records:
+        record_id = record["id"]
+        if record_id in seen:
+            duplicates.add(record_id)
+        seen.add(record_id)
+    if duplicates:
+        duplicate_list = ", ".join(str(record_id) for record_id in sorted(duplicates))
+        raise ValueError(f"seed_costs.csv has duplicate cost record ids: {duplicate_list}")
+
+
+def _normalize_cost_record(record: pd.Series, *, row_number: int) -> dict:
+    normalized = {key: _blank_to_none(record[key]) for key in REQUIRED_COST_COLUMNS}
+    normalized["id"] = _parse_positive_int(normalized["id"], row_number=row_number, column="id")
+    normalized["cost_key"] = _required_text(normalized["cost_key"], row_number=row_number, column="cost_key")
+    normalized["name"] = _required_text(normalized["name"], row_number=row_number, column="name")
+    normalized["category"] = _required_text(normalized["category"], row_number=row_number, column="category")
+    normalized["unit"] = _required_text(normalized["unit"], row_number=row_number, column="unit")
+    normalized["cost_type"] = _parse_supported_value(
+        normalized["cost_type"],
+        SUPPORTED_COST_TYPES,
+        row_number=row_number,
+        column="cost_type",
+    )
+    normalized["charge_basis"] = _parse_supported_value(
+        normalized["charge_basis"],
+        SUPPORTED_CHARGE_BASES,
+        row_number=row_number,
+        column="charge_basis",
+    )
+    normalized["billing_frequency"] = _parse_supported_value(
+        normalized["billing_frequency"],
+        SUPPORTED_BILLING_FREQUENCIES,
+        row_number=row_number,
+        column="billing_frequency",
+    )
+    normalized["record_type"] = _parse_supported_value(
+        normalized["record_type"],
+        SUPPORTED_RECORD_TYPES,
+        row_number=row_number,
+        column="record_type",
+    )
+    normalized["quantity"] = _parse_non_negative_decimal(
+        normalized["quantity"],
+        row_number=row_number,
+        column="quantity",
+    )
+    normalized["unit_cost"] = _parse_non_negative_decimal(
+        normalized["unit_cost"],
+        row_number=row_number,
+        column="unit_cost",
+    )
+    normalized["charge_day"] = _parse_optional_charge_day(normalized["charge_day"], row_number=row_number)
+    normalized["start_date"] = _parse_optional_iso_date(
+        normalized["start_date"],
+        row_number=row_number,
+        column="start_date",
+    )
+    normalized["end_date"] = _parse_optional_iso_date(normalized["end_date"], row_number=row_number, column="end_date")
+    normalized["enabled"] = _parse_bool(normalized["enabled"], row_number=row_number, column="enabled")
+    normalized["currency"] = _required_text(normalized["currency"], row_number=row_number, column="currency")
+    return normalized
+
+
+def _blank_to_none(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else None
+    return value
+
+
+def _required_text(value, *, row_number: int, column: str) -> str:
+    if value is None:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' is required")
+    return str(value).strip()
+
+
+def _parse_supported_value(value, supported: set[str], *, row_number: int, column: str) -> str:
+    text = _required_text(value, row_number=row_number, column=column)
+    if text not in supported:
+        allowed = ", ".join(sorted(supported))
+        raise ValueError(
+            f"seed_costs.csv row {row_number} column '{column}' has unsupported value '{text}'. Use: {allowed}"
+        )
+    return text
+
+
+def _parse_positive_int(value, *, row_number: int, column: str) -> int:
+    text = _required_text(value, row_number=row_number, column=column)
+    try:
+        parsed = int(text)
+    except ValueError as exc:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be an integer") from exc
+    if parsed <= 0:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be positive")
+    return parsed
+
+
+def _parse_non_negative_decimal(value, *, row_number: int, column: str) -> Decimal:
+    text = _required_text(value, row_number=row_number, column=column)
+    try:
+        parsed = Decimal(text)
+    except Exception as exc:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be numeric") from exc
+    if parsed < 0:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' cannot be negative")
+    return parsed
+
+
+def _parse_optional_charge_day(value, *, row_number: int) -> int | None:
+    if value is None:
+        return None
+    day = _parse_positive_int(value, row_number=row_number, column="charge_day")
+    if day > 31:
+        raise ValueError(f"seed_costs.csv row {row_number} column 'charge_day' must be between 1 and 31")
+    return day
+
+
+def _parse_optional_iso_date(value, *, row_number: int, column: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return pd.Timestamp(value).date()
+    except Exception as exc:
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be a valid date") from exc
+
+
+def _parse_bool(value, *, row_number: int, column: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = _required_text(value, row_number=row_number, column=column).lower()
+    if text in {"true", "t", "yes", "y", "1"}:
+        return True
+    if text in {"false", "f", "no", "n", "0"}:
+        return False
+    raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be a Boolean value")
 
 
 def _date_record(record: dict, keys: list[str]) -> dict:
@@ -306,6 +522,18 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     parsed.loc[iso_mask] = pd.to_datetime(values.loc[iso_mask], format="%Y-%m-%d", errors="coerce")
     parsed.loc[~iso_mask] = pd.to_datetime(values.loc[~iso_mask], errors="coerce", dayfirst=True)
     return parsed
+
+
+def _validate_cost_versions(items: list[CostItem]) -> None:
+    versions: dict[str, list[CostItem]] = defaultdict(list)
+    for item in items:
+        if item.enabled and item.record_type == "actual":
+            versions[item.cost_key].append(item)
+    for cost_key, cost_versions in versions.items():
+        ordered = sorted(cost_versions, key=lambda item: item.start_date or date.min)
+        for previous, current in zip(ordered, ordered[1:], strict=False):
+            if previous.end_date is None or current.start_date is None or current.start_date <= previous.end_date:
+                raise ValueError(f"Overlapping effective dates for cost_key '{cost_key}'")
 
 
 def _service_label(service_code: str) -> str:

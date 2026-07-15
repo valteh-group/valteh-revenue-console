@@ -90,17 +90,24 @@ class CostItemORM(Base):
     __tablename__ = "cost_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    cost_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(120))
     category: Mapped[str] = mapped_column(String(80), nullable=False)
     service_line: Mapped[str | None] = mapped_column(String(80))
     cost_type: Mapped[str] = mapped_column(String(40), nullable=False)
-    monthly_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
-    one_time_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
-    start_date: Mapped[date | None] = mapped_column(Date)
+    charge_basis: Mapped[str] = mapped_column(String(80), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=1)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
-    unit: Mapped[str | None] = mapped_column(String(80))
+    unit: Mapped[str] = mapped_column(String(80), nullable=False)
+    billing_frequency: Mapped[str] = mapped_column(String(40), nullable=False)
+    charge_day: Mapped[int | None] = mapped_column()
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
     currency: Mapped[str] = mapped_column(String(3), default="MXN")
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    record_type: Mapped[str] = mapped_column(String(40), default="actual")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class RevenueEventORM(Base):
