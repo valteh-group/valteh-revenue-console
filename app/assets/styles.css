@@ -20,6 +20,19 @@ body {
   margin-left: 260px;
 }
 
+.brand-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.brand-logo {
+  flex: 0 0 auto;
+  height: 48px;
+  object-fit: contain;
+  width: 48px;
+}
+
 .nav-pills .nav-link {
   border-radius: 6px;
   color: #344054;

@@ -26,6 +26,8 @@ from app.domain.revenue_engine import (
     calculate_usage_revenue,
 )
 from app.domain.unit_economics import calculate_gross_margin, calculate_gross_margin_percentage
+from app.utils.currency import BASE_CURRENCY, STATIC_EXCHANGE_RATES_TO_MXN, convert_to_mxn
+from app.utils.dates import current_month_key, month_key, month_range
 
 REQUIRED_COST_COLUMNS = {
     "id",
@@ -40,7 +42,6 @@ REQUIRED_COST_COLUMNS = {
     "unit_cost",
     "unit",
     "billing_frequency",
-    "charge_day",
     "start_date",
     "end_date",
     "currency",
@@ -53,6 +54,7 @@ SUPPORTED_COST_TYPES = {"fixed", "variable", "one_time"}
 SUPPORTED_CHARGE_BASES = {"flat", "per_user", "usage"}
 SUPPORTED_BILLING_FREQUENCIES = {"monthly", "annual", "usage", "once"}
 SUPPORTED_RECORD_TYPES = {"actual", "budget", "estimate"}
+SUPPORTED_COST_CURRENCIES = set(STATIC_EXCHANGE_RATES_TO_MXN)
 
 
 @dataclass
@@ -215,7 +217,12 @@ class SeedRepository:
         )
 
     def available_months(self) -> list[str]:
-        return sorted({event.event_timestamp.strftime("%Y-%m") for event in self.usage_events()})
+        cost_months = {month_key(item.start_date) for item in self.cost_items() if item.start_date is not None}
+        usage_months = {event.event_timestamp.strftime("%Y-%m") for event in self.usage_events()}
+        known_months = cost_months | usage_months
+        if not known_months:
+            return [current_month_key()]
+        return month_range(min(known_months), max(current_month_key(), *usage_months))
 
     def usage_for_month(self, month: str) -> list[UsageEvent]:
         return [event for event in self.usage_events() if event.event_timestamp.strftime("%Y-%m") == month]
@@ -413,12 +420,20 @@ def _normalize_cost_record(record: pd.Series, *, row_number: int) -> dict:
         row_number=row_number,
         column="quantity",
     )
-    normalized["unit_cost"] = _parse_non_negative_decimal(
+    unit_cost = _parse_non_negative_decimal(
         normalized["unit_cost"],
         row_number=row_number,
         column="unit_cost",
     )
-    normalized["charge_day"] = _parse_optional_charge_day(normalized["charge_day"], row_number=row_number)
+    currency = _parse_supported_value(
+        normalized["currency"],
+        SUPPORTED_COST_CURRENCIES,
+        row_number=row_number,
+        column="currency",
+        normalize_upper=True,
+    )
+    normalized["unit_cost"] = convert_to_mxn(unit_cost, currency)
+    normalized["currency"] = BASE_CURRENCY
     normalized["start_date"] = _parse_optional_iso_date(
         normalized["start_date"],
         row_number=row_number,
@@ -426,7 +441,6 @@ def _normalize_cost_record(record: pd.Series, *, row_number: int) -> dict:
     )
     normalized["end_date"] = _parse_optional_iso_date(normalized["end_date"], row_number=row_number, column="end_date")
     normalized["enabled"] = _parse_bool(normalized["enabled"], row_number=row_number, column="enabled")
-    normalized["currency"] = _required_text(normalized["currency"], row_number=row_number, column="currency")
     return normalized
 
 
@@ -445,8 +459,17 @@ def _required_text(value, *, row_number: int, column: str) -> str:
     return str(value).strip()
 
 
-def _parse_supported_value(value, supported: set[str], *, row_number: int, column: str) -> str:
+def _parse_supported_value(
+    value,
+    supported: set[str],
+    *,
+    row_number: int,
+    column: str,
+    normalize_upper: bool = False,
+) -> str:
     text = _required_text(value, row_number=row_number, column=column)
+    if normalize_upper:
+        text = text.upper()
     if text not in supported:
         allowed = ", ".join(sorted(supported))
         raise ValueError(
@@ -477,22 +500,16 @@ def _parse_non_negative_decimal(value, *, row_number: int, column: str) -> Decim
     return parsed
 
 
-def _parse_optional_charge_day(value, *, row_number: int) -> int | None:
-    if value is None:
-        return None
-    day = _parse_positive_int(value, row_number=row_number, column="charge_day")
-    if day > 31:
-        raise ValueError(f"seed_costs.csv row {row_number} column 'charge_day' must be between 1 and 31")
-    return day
-
-
 def _parse_optional_iso_date(value, *, row_number: int, column: str) -> date | None:
     if value is None:
         return None
-    try:
-        return pd.Timestamp(value).date()
-    except Exception as exc:
-        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be a valid date") from exc
+    text = str(value).strip()
+    parsed = pd.to_datetime(text, format="%Y-%m-%d", errors="coerce")
+    if pd.isna(parsed):
+        parsed = pd.to_datetime(text, errors="coerce", dayfirst=True)
+    if pd.isna(parsed):
+        raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be a valid date")
+    return parsed.date()
 
 
 def _parse_bool(value, *, row_number: int, column: str) -> bool:

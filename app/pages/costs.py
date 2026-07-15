@@ -32,7 +32,6 @@ def layout():
             "configured_amount": format_mxn(item.configured_amount),
             "unit": item.unit,
             "frequency": item.billing_frequency,
-            "charge_day": item.charge_day or "",
             "start_date": item.start_date.isoformat() if item.start_date else "",
             "end_date": item.end_date.isoformat() if item.end_date else "",
             "enabled": item.enabled,

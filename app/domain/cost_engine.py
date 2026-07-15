@@ -132,11 +132,9 @@ def _fixed_cost_for_month(item: CostItem, month: date) -> Decimal:
         return Decimal("0")
     if item.cost_type == "fixed":
         if item.billing_frequency == "monthly":
-            charge_date = _charge_date(item, month)
-            return money(item.configured_amount) if _is_cost_effective_on_day(item, charge_date) else Decimal("0")
+            return money(item.configured_amount)
         if item.billing_frequency == "annual" and item.start_date and item.start_date.month == month.month:
-            charge_date = _charge_date(item, month)
-            return money(item.configured_amount) if _is_cost_effective_on_day(item, charge_date) else Decimal("0")
+            return money(item.configured_amount)
     if item.cost_type == "one_time" and item.start_date:
         if item.start_date.year == month.year and item.start_date.month == month.month:
             return money(item.configured_amount)
@@ -166,13 +164,6 @@ def _is_cost_effective_on_day(item: CostItem, when: date, period_end: date | Non
         and (item.start_date is None or item.start_date <= period_end)
         and (item.end_date is None or item.end_date >= when)
     )
-
-
-def _charge_date(item: CostItem, month: date) -> date:
-    next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    last_day = (next_month - timedelta(days=1)).day
-    day = item.charge_day or (item.start_date.day if item.start_date else 1)
-    return month.replace(day=min(day, last_day))
 
 
 def _normalize_rates(
