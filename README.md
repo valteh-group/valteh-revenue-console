@@ -119,9 +119,15 @@ When a cost changes, do not edit the historical amount in place:
 2. Add a row with a new unique `id`, the same `cost_key`, the new `start_date`, quantity, and unit cost.
 3. Leave `end_date` empty while the new version remains in force.
 
+For manual CSV edits, `id` can be left blank; the loader will assign the CSV row number as the record id.
+`cost_key` can also be left blank for simple new costs, and the loader will derive one from stable descriptive
+fields. For historical versions of the same cost, keep an explicit shared `cost_key` so the app can treat the
+rows as versions of one concept.
+
 Use `quantity` and `unit_cost` separately (for example, 4 users x 8 USD). `record_type=actual` participates in reported costs;
 `budget` and `estimate` remain visible but are excluded from actual margins. Set `end_date` when a cost
-ceases to exist. `enabled` is an operational kill switch and should not replace lifecycle dates.
+ceases to exist. `enabled` is an operational kill switch and accepts values such as `TRUE/FALSE` or `ON/OFF`;
+it should not replace lifecycle dates.
 
 Costs are reported in MXN. Seed rows can currently be entered in `MXN` or `USD`; USD rows are converted to MXN
 with the temporary flat rate `1 USD = 18 MXN`. Later FX history can replace this static conversion in the

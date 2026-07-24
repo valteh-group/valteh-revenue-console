@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -30,8 +31,6 @@ from app.utils.currency import BASE_CURRENCY, STATIC_EXCHANGE_RATES_TO_MXN, conv
 from app.utils.dates import current_month_key, month_key, month_range
 
 REQUIRED_COST_COLUMNS = {
-    "id",
-    "cost_key",
     "name",
     "provider",
     "category",
@@ -49,6 +48,7 @@ REQUIRED_COST_COLUMNS = {
     "enabled",
     "notes",
 }
+OPTIONAL_COST_COLUMNS = {"id", "cost_key"}
 
 SUPPORTED_COST_TYPES = {"fixed", "variable", "one_time"}
 SUPPORTED_CHARGE_BASES = {"flat", "per_user", "usage"}
@@ -133,6 +133,9 @@ class SeedRepository:
     def cost_items(self) -> list[CostItem]:
         df = pd.read_csv(self.data_path / "seed_costs.csv", dtype="string", keep_default_na=False)
         _validate_required_cost_columns(df)
+        for column in OPTIONAL_COST_COLUMNS:
+            if column not in df.columns:
+                df[column] = ""
         normalized_records = [_normalize_cost_record(record, row_number=index + 2) for index, record in df.iterrows()]
         _validate_duplicate_cost_ids(normalized_records)
         items = [CostItem(**record) for record in normalized_records]
@@ -385,9 +388,13 @@ def _validate_duplicate_cost_ids(records: list[dict]) -> None:
 
 
 def _normalize_cost_record(record: pd.Series, *, row_number: int) -> dict:
-    normalized = {key: _blank_to_none(record[key]) for key in REQUIRED_COST_COLUMNS}
-    normalized["id"] = _parse_positive_int(normalized["id"], row_number=row_number, column="id")
-    normalized["cost_key"] = _required_text(normalized["cost_key"], row_number=row_number, column="cost_key")
+    normalized = {key: _blank_to_none(record[key]) for key in REQUIRED_COST_COLUMNS | OPTIONAL_COST_COLUMNS}
+    normalized["id"] = _parse_optional_positive_int(
+        normalized["id"],
+        default=row_number - 1,
+        row_number=row_number,
+        column="id",
+    )
     normalized["name"] = _required_text(normalized["name"], row_number=row_number, column="name")
     normalized["category"] = _required_text(normalized["category"], row_number=row_number, column="category")
     normalized["unit"] = _required_text(normalized["unit"], row_number=row_number, column="unit")
@@ -441,6 +448,7 @@ def _normalize_cost_record(record: pd.Series, *, row_number: int) -> dict:
     )
     normalized["end_date"] = _parse_optional_iso_date(normalized["end_date"], row_number=row_number, column="end_date")
     normalized["enabled"] = _parse_bool(normalized["enabled"], row_number=row_number, column="enabled")
+    normalized["cost_key"] = normalized["cost_key"] or _derived_cost_key(normalized)
     return normalized
 
 
@@ -489,6 +497,12 @@ def _parse_positive_int(value, *, row_number: int, column: str) -> int:
     return parsed
 
 
+def _parse_optional_positive_int(value, *, default: int, row_number: int, column: str) -> int:
+    if value is None:
+        return default
+    return _parse_positive_int(value, row_number=row_number, column=column)
+
+
 def _parse_non_negative_decimal(value, *, row_number: int, column: str) -> Decimal:
     text = _required_text(value, row_number=row_number, column=column)
     try:
@@ -516,11 +530,27 @@ def _parse_bool(value, *, row_number: int, column: str) -> bool:
     if isinstance(value, bool):
         return value
     text = _required_text(value, row_number=row_number, column=column).lower()
-    if text in {"true", "t", "yes", "y", "1"}:
+    if text in {"true", "t", "yes", "y", "1", "on"}:
         return True
-    if text in {"false", "f", "no", "n", "0"}:
+    if text in {"false", "f", "no", "n", "0", "off"}:
         return False
     raise ValueError(f"seed_costs.csv row {row_number} column '{column}' must be a Boolean value")
+
+
+def _derived_cost_key(record: dict) -> str:
+    parts = [
+        record.get("category"),
+        record.get("provider"),
+        record.get("name"),
+        record.get("unit") if record.get("charge_basis") == "usage" else None,
+    ]
+    raw_key = ".".join(str(part) for part in parts if part)
+    return _slug(raw_key)
+
+
+def _slug(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", ".", value.lower())
+    return normalized.strip(".")
 
 
 def _date_record(record: dict, keys: list[str]) -> dict:
