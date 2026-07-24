@@ -33,6 +33,27 @@ body {
   width: 48px;
 }
 
+.costs-page-header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.cost-period-filters {
+  align-items: flex-end;
+  display: flex;
+  gap: 10px;
+}
+
+.cost-period-year {
+  width: 110px;
+}
+
+.cost-period-month {
+  width: 170px;
+}
+
 .nav-pills .nav-link {
   border-radius: 6px;
   color: #344054;
@@ -50,7 +71,17 @@ body {
   cursor: pointer;
 }
 
-.revenue-split-row {
+.cost-card-toggle {
+  cursor: pointer;
+}
+
+.cost-card-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.revenue-split-row,
+.cost-split-row {
   align-items: center;
   display: flex;
   justify-content: space-between;

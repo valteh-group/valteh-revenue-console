@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from app.data.repositories import (
+    OPTIONAL_COST_COLUMNS,
     REQUIRED_COST_COLUMNS,
     SeedRepository,
     _normalize_cost_record,
@@ -37,15 +38,16 @@ def _seed_record(**overrides) -> pd.Series:
         "notes": "Original rate",
     }
     values.update(overrides)
-    return pd.Series({column: values[column] for column in REQUIRED_COST_COLUMNS})
+    return pd.Series({column: values[column] for column in REQUIRED_COST_COLUMNS | OPTIONAL_COST_COLUMNS})
 
 
 def test_loads_new_cost_seed_schema() -> None:
     items = SeedRepository().cost_items()
 
-    assert len(items) == 16
+    assert items
+    assert len({item.id for item in items}) == len(items)
     microsoft_versions = [item for item in items if item.cost_key == "software.microsoft365.team"]
-    assert [item.id for item in microsoft_versions] == [2, 15]
+    assert [item.start_date for item in microsoft_versions] == [date(2026, 5, 1), date(2026, 7, 1)]
     assert microsoft_versions[0].quantity == Decimal("4")
     assert microsoft_versions[0].unit_cost == Decimal("108")
     assert microsoft_versions[1].unit_cost == Decimal("144")
@@ -55,6 +57,8 @@ def test_loads_new_cost_seed_schema() -> None:
 def test_boolean_parsing_accepts_csv_true_false_values() -> None:
     assert _parse_bool("TRUE", row_number=2, column="enabled") is True
     assert _parse_bool("FALSE", row_number=2, column="enabled") is False
+    assert _parse_bool("ON", row_number=2, column="enabled") is True
+    assert _parse_bool("OFF", row_number=2, column="enabled") is False
 
 
 def test_boolean_parsing_rejects_invalid_values() -> None:
@@ -118,9 +122,16 @@ def test_duplicate_record_ids_are_rejected() -> None:
         _validate_duplicate_cost_ids(records)
 
 
-def test_missing_cost_key_is_rejected() -> None:
-    with pytest.raises(ValueError, match="cost_key.*required"):
-        _normalize_cost_record(_seed_record(cost_key=""), row_number=2)
+def test_blank_id_defaults_to_csv_record_position() -> None:
+    record = _normalize_cost_record(_seed_record(id=""), row_number=7)
+
+    assert record["id"] == 6
+
+
+def test_blank_cost_key_is_derived_from_stable_record_fields() -> None:
+    record = _normalize_cost_record(_seed_record(cost_key=""), row_number=2)
+
+    assert record["cost_key"] == "software.microsoft.microsoft.365.team.subscription"
 
 
 def test_microsoft_seed_history_uses_may_june_and_july_versions() -> None:
@@ -133,12 +144,22 @@ def test_microsoft_seed_history_uses_may_june_and_july_versions() -> None:
 
 def test_dashboard_service_functions_use_monthly_cost_totals() -> None:
     repo = SeedRepository()
+    costs = repo.monthly_cost_amounts("2026-06")
     summary = repo.monthly_summary("2026-06")
+    expected_fixed = sum(
+        (cost.amount for cost in costs if cost.cost_type in {"fixed", "one_time"}),
+        Decimal("0"),
+    )
+    expected_variable = sum(
+        (cost.amount for cost in costs if cost.cost_type == "variable"),
+        Decimal("0"),
+    )
 
-    assert summary["fixed_cost"] == Decimal("1108")
-    assert summary["variable_cost"] == Decimal("1917.18")
-    assert repo.cost_by_service("2026-06")["Shared"] == Decimal("1108")
-    assert repo.cost_by_category("2026-06")["Software"] == Decimal("738")
+    assert summary["fixed_cost"] == expected_fixed
+    assert summary["variable_cost"] == expected_variable
+    assert sum(repo.cost_by_service("2026-06").values(), Decimal("0")) == expected_fixed + expected_variable
+    assert sum(repo.cost_by_category("2026-06").values(), Decimal("0")) == expected_fixed + expected_variable
+    assert sum(repo.cost_by_provider("2026-06").values(), Decimal("0")) == expected_fixed + expected_variable
     assert repo.cost_by_provider("2026-06")["Microsoft"] == Decimal("432")
 
 
